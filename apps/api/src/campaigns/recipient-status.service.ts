@@ -45,11 +45,12 @@ export class RecipientStatusService {
     const messageId = Number(body?.id);
     if (!messageId) return;
     const recipient = await this.prisma.campaignRecipient.findFirst({ where: { chatwootMessageId: messageId } });
-    if (!recipient) return;
+    if (!recipient) return; // mensagem que não é de campanha
     if (body.status) {
       await this.apply(recipient, body.status, body.content_attributes?.external_error);
     } else {
-      await this.refresh([recipient]);
+      const changed = await this.refresh([recipient]);
+      if (changed) this.logger.log(`Status atualizado: ${recipient.name} (${recipient.phone})`);
     }
   }
 

@@ -31,7 +31,6 @@ export class WebhooksController {
       this.logger.warn('Webhook do Chatwoot recusado: token inválido (confira a URL cadastrada no Chatwoot)');
       throw new ForbiddenException();
     }
-    this.logger.debug(`Webhook recebido: ${body?.event} (mensagem ${body?.id}, status ${body?.status ?? '—'})`);
     try {
       if (body?.event === 'message_updated' || (body?.event === 'message_created' && body?.message_type === 'outgoing')) {
         await this.status.fromWebhook(body);
