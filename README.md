@@ -22,6 +22,8 @@ Disparo de modelos do WhatsApp (API oficial da Meta) para clientes do **IXC Prov
 
 ## Instalação (Docker)
 
+> Passo a passo completo, com Proxy Manager, webhook e primeiro teste: **[docs/INSTALACAO.md](docs/INSTALACAO.md)**
+
 Requisitos: um servidor com Docker e Docker Compose, na mesma rede do IXC e do Chatwoot.
 
 ```bash
