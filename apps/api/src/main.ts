@@ -28,11 +28,11 @@ async function bootstrap() {
   app.use((_req: unknown, res: { setHeader: (k: string, v: string) => void }, next: () => void) => {
     res.setHeader('X-Content-Type-Options', 'nosniff'); // navegador não "adivinha" o tipo de arquivos enviados
     res.setHeader('X-Frame-Options', 'DENY'); // impede abrir o painel dentro de iframe de outro site
-    res.setHeader('Referrer-Policy', 'same-origin');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin'); // o OpenStreetMap exige saber o site de origem para liberar os mapas
     next();
   });
   app.useGlobalPipes(new ValidationPipe({ transform: true }));
-  app.useBodyParser('json', { limit: '5mb' });
+  app.useBodyParser('json', { limit: '25mb' }); // planilhas (CSV) de até 20 mil linhas
   app.enableShutdownHooks();
   await ensureAdmin(app.get(PrismaService));
   const port = Number(process.env.PORT || 3000);
