@@ -16,6 +16,12 @@ export class IxcController {
     return kind === 'cidade' ? this.audience.citiesInUse() : this.audience.lookup(kind);
   }
 
+  /** Todos os campos que a tabela tem no IXC deste provedor. */
+  @Get('fields/:table')
+  fields(@Param('table') table: string) {
+    return this.audience.fieldsOf(table);
+  }
+
   /** Prévia do público: devolve os clientes para o mapa e o resumo. */
   @Post('audience/preview')
   async preview(@Body() spec: AudienceSpec, @Query('refresh') refresh?: string) {

@@ -4,7 +4,7 @@ import { IXC_TABLES } from './ixc.catalog';
 import { SettingsService } from '../settings/settings.service';
 import { Area, insideAnyArea, parseCoord } from '../common/geo';
 import { normalizeBrPhone } from '../common/phone';
-import { toIxcValue } from '../common/text';
+import { resolveDynamicValue, toIxcValue } from '../common/text';
 
 export interface AudienceFilter {
   table: string;
@@ -59,11 +59,42 @@ export class AudienceService {
     return filters.map((f) => {
       if (!VALID_OPS.has(f.op)) throw new BadRequestException(`Operador inválido: ${f.op}`);
       if (!/^[a-z0-9_]+$/i.test(f.field)) throw new BadRequestException(`Campo inválido: ${f.field}`);
+      const type = IXC_TABLES.find((t) => t.table === table)?.fields.find((x) => x.field === f.field)?.type;
+      if (type === 'datetime') return this.datetimeGrid(`${table}.${f.field}`, f);
       const grid: IxcGridParam = { TB: `${table}.${f.field}`, OP: f.op, P: toIxcValue(String(f.value ?? '')) };
       if (f.op === 'BE' || f.op === 'NBE') grid.P2 = toIxcValue(String(f.value2 ?? ''));
       if (f.op === 'IN' || f.op === 'NI') grid.P = grid.P.split(',').map((x) => x.trim()).filter(Boolean).join(',');
       return grid;
     });
+  }
+
+  /**
+   * Campos de data e hora (ex.: abertura da OS) usam "aaaa-mm-dd hh:mm:ss" no IXC.
+   * Um dia escolhido vale o dia inteiro: "= 10/10" vira "entre 10/10 00:00 e 10/10 23:59".
+   */
+  private datetimeGrid(TB: string, f: AudienceFilter): IxcGridParam {
+    const day = (v?: string) => resolveDynamicValue(String(v ?? '')).trim();
+    const isDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+    const start = (v: string) => (isDay(v) ? `${v} 00:00:00` : v);
+    const end = (v: string) => (isDay(v) ? `${v} 23:59:59` : v);
+    const v = day(f.value);
+    switch (f.op) {
+      case '=':
+        return { TB, OP: 'BE', P: start(v), P2: end(v) };
+      case '!=':
+        return { TB, OP: 'NBE', P: start(v), P2: end(v) };
+      case '>':
+      case '<=':
+        return { TB, OP: f.op, P: end(v) };
+      case '<':
+      case '>=':
+        return { TB, OP: f.op, P: start(v) };
+      case 'BE':
+      case 'NBE':
+        return { TB, OP: f.op, P: start(v), P2: end(day(f.value2)) };
+      default:
+        return { TB, OP: f.op, P: v };
+    }
   }
 
   /** Mapa id -> nome das cidades do IXC. */
@@ -87,11 +118,15 @@ export class AudienceService {
     // 2) cada tabela relacionada vira um conjunto de ids de cliente (interseção)
     let allowed = null as Set<string> | null;
     for (const [table, tf] of byTable) {
-      if (table === 'cliente') continue;
+      if (table === 'cliente' || table === 'sendtec') continue;
       const def = IXC_TABLES.find((t) => t.table === table)!;
       const grid = this.gridFor(tf, table);
       const rows = await this.cached(`${table}:${JSON.stringify(grid)}`, () => this.ixc.all(table, grid), opts.refresh);
       const ids = new Set(rows.map((r) => String(r[def.clientKey])));
+      allowed = allowed ? new Set([...allowed].filter((id: string) => ids.has(id))) : ids;
+    }
+    for (const f of byTable.get('sendtec') ?? []) {
+      const ids = await this.virtualFilter(f, clients, opts.refresh);
       allowed = allowed ? new Set([...allowed].filter((id: string) => ids.has(id))) : ids;
     }
 
@@ -167,6 +202,84 @@ export class AudienceService {
     };
   }
 
+  /** Filtros calculados pelo Sendtec a partir dos dados do IXC. */
+  private async virtualFilter(f: AudienceFilter, clients: IxcRecord[], refresh?: boolean): Promise<Set<string>> {
+    const now = new Date();
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    if (f.field === 'aniversario') {
+      const days = f.value === 'semana' ? 7 : 0;
+      const wanted = new Set<string>();
+      for (let i = 0; i <= days; i++) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + i);
+        wanted.add(iso(d).slice(5));
+      }
+      const month = iso(now).slice(5, 7);
+      return new Set(
+        clients
+          .filter((c) => /^\d{4}-\d{2}-\d{2}/.test(c.data_nascimento || '') && c.data_nascimento !== '0000-00-00')
+          .filter((c) => (f.value === 'mes' ? c.data_nascimento.slice(5, 7) === month : wanted.has(c.data_nascimento.slice(5, 10))))
+          .map((c) => String(c.id)),
+      );
+    }
+
+    if (f.field === 'pagamento') {
+      const m = /^(em_dia|atrasou)_(\d+)$/.exec(String(f.value));
+      if (!m) throw new BadRequestException('Histórico de pagamento inválido');
+      const [, kind, span] = [m[0], m[1], Number(m[2])];
+      const from = new Date(now);
+      from.setMonth(from.getMonth() - span);
+      const today = iso(now);
+      // títulos com vencimento no período (já vencidos)
+      const rows = await this.cached(`pagamento:${span}:${today}`, () =>
+        this.ixc.all('fn_areceber', [
+          { TB: 'fn_areceber.data_vencimento', OP: 'BE', P: toIxcValue(iso(from)), P2: toIxcValue(today) },
+          { TB: 'fn_areceber.status', OP: '!=', P: 'C' },
+        ]), refresh);
+      const late = new Set<string>();
+      const seen = new Set<string>();
+      for (const r of rows) {
+        const id = String(r.id_cliente);
+        seen.add(id);
+        const paidAt = (r.pagamento_data || r.baixa_data || '').slice(0, 10);
+        const venc = (r.data_vencimento || '').slice(0, 10);
+        const paidLate = r.status !== 'A' && /^\d{4}-\d{2}-\d{2}$/.test(paidAt) && paidAt > venc;
+        const openOverdue = (r.status === 'A' || r.status === 'P') && r.liberado !== 'N' && venc < today;
+        if (paidLate || openOverdue) late.add(id);
+      }
+      return kind === 'atrasou' ? late : new Set([...seen].filter((id) => !late.has(id)));
+    }
+
+    if (f.field === 'tempo_casa') {
+      const months = Number(f.value);
+      if (!Number.isFinite(months)) throw new BadRequestException('Informe o tempo de casa em meses');
+      const contracts = await this.cached('contratos:ativacao', () => this.ixc.all('cliente_contrato'), refresh);
+      const first = new Map<string, string>();
+      for (const c of contracts) {
+        const d = (c.data_ativacao || '').slice(0, 10);
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || d === '0000-00-00') continue;
+        const id = String(c.id_cliente);
+        if (!first.has(id) || d < first.get(id)!) first.set(id, d);
+      }
+      const limit = new Date(now);
+      limit.setMonth(limit.getMonth() - months);
+      const cut = iso(limit);
+      // ">= N meses": primeira ativação até a data de corte; "<= N meses": depois dela
+      return new Set([...first].filter(([, d]) => (f.op === '<=' ? d >= cut : d <= cut)).map(([id]) => id));
+    }
+
+    throw new BadRequestException(`Filtro desconhecido: ${f.field}`);
+  }
+
+  /** Todos os campos que uma tabela tem no IXC deste provedor (lidos de um registro real). */
+  async fieldsOf(table: string): Promise<string[]> {
+    const def = IXC_TABLES.find((t) => t.table === table);
+    if (!def || def.virtual) throw new BadRequestException('Tabela não suportada');
+    const res = await this.cached(`campos:${table}`, () => this.ixc.page(table, [], 1, 1));
+    return Object.keys(res.registros?.[0] ?? {}).sort();
+  }
+
   /** Coordenadas do endereço de instalação (primeiro contrato ativo com coordenadas, senão qualquer um). */
   private async contractCoords(refresh?: boolean): Promise<Map<string, [number, number]>> {
     const rows = await this.cached('contratos:coords', () => this.ixc.all('cliente_contrato'), refresh);
@@ -187,6 +300,9 @@ export class AudienceService {
       filial: { table: 'filial', label: (r) => r.fantasia || r.razao || `Filial ${r.id}` },
       plano: { table: 'vd_contratos', label: (r) => r.nome || r.descricao || `Plano ${r.id}` },
       tipo_cliente: { table: 'tipo_cliente', label: (r) => r.tipo_cliente || r.descricao || r.nome || `Tipo ${r.id}` },
+      colaborador: { table: 'funcionarios', label: (r) => (r.funcionario || `Colaborador ${r.id}`) + (r.ativo === 'N' ? ' (inativo)' : '') },
+      assunto: { table: 'su_oss_assunto', label: (r) => r.assunto || r.descricao || `Assunto ${r.id}` },
+      vendedor: { table: 'vendedor', label: (r) => (r.nome || `Vendedor ${r.id}`) + (r.status === 'I' ? ' (inativo)' : '') },
     };
     const src = sources[kind];
     if (!src) throw new BadRequestException('Lookup desconhecido');

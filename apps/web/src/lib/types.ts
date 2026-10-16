@@ -65,7 +65,12 @@ export interface Recipient {
 }
 
 export interface Catalog {
-  tables: { table: string; label: string; fields: { field: string; label: string; type: string; options?: { value: string; label: string }[]; lookup?: string }[] }[];
+  tables: {
+    table: string;
+    label: string;
+    virtual?: boolean;
+    fields: { field: string; label: string; type: string; options?: { value: string; label: string }[]; lookup?: string; ops?: string[] }[];
+  }[];
   operators: { value: string; label: string }[];
   variableSources: { source: string; label: string; fields: { field: string; label: string }[] }[];
 }

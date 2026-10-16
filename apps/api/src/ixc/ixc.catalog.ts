@@ -5,9 +5,10 @@
 export interface FieldDef {
   field: string;
   label: string;
-  type: 'text' | 'number' | 'date' | 'enum';
+  type: 'text' | 'number' | 'date' | 'datetime' | 'enum';
   options?: { value: string; label: string }[];
-  lookup?: 'cidade' | 'filial' | 'plano' | 'tipo_cliente';
+  lookup?: 'cidade' | 'filial' | 'plano' | 'tipo_cliente' | 'colaborador' | 'assunto' | 'vendedor';
+  ops?: string[]; // operadores permitidos (padrão: todos)
 }
 
 export interface TableDef {
@@ -15,6 +16,7 @@ export interface TableDef {
   label: string;
   clientKey: string; // campo que aponta para o cliente
   fields: FieldDef[];
+  virtual?: boolean; // filtros calculados pelo Sendtec (não é uma tabela do IXC)
 }
 
 const simNao = [
@@ -41,6 +43,8 @@ export const IXC_TABLES: TableDef[] = [
       { field: 'data_cadastro', label: 'Data de cadastro', type: 'date' },
       { field: 'data_nascimento', label: 'Data de nascimento', type: 'date' },
       { field: 'email', label: 'E-mail', type: 'text' },
+      { field: 'id_vendedor', label: 'Vendedor', type: 'enum', lookup: 'vendedor' },
+      { field: 'id_condominio', label: 'ID do condomínio', type: 'number' },
       { field: 'id', label: 'ID do cliente', type: 'number' },
     ],
   },
@@ -75,6 +79,8 @@ export const IXC_TABLES: TableDef[] = [
         ],
       },
       { field: 'id_vd_contrato', label: 'Plano', type: 'enum', lookup: 'plano' },
+      { field: 'id_vendedor', label: 'Vendedor', type: 'enum', lookup: 'vendedor' },
+      { field: 'fidelidade', label: 'Fidelidade (meses)', type: 'number' },
       { field: 'contrato', label: 'Nome do plano', type: 'text' },
       { field: 'num_parcelas_atraso', label: 'Parcelas em atraso', type: 'number' },
       { field: 'pago_ate_data', label: 'Pago até', type: 'date' },
@@ -108,6 +114,72 @@ export const IXC_TABLES: TableDef[] = [
       { field: 'valor_aberto', label: 'Valor em aberto', type: 'number' },
       { field: 'data_emissao', label: 'Data de emissão', type: 'date' },
       { field: 'id_contrato', label: 'ID do contrato', type: 'number' },
+    ],
+  },
+  {
+    table: 'su_oss_chamado',
+    label: 'Ordem de serviço',
+    clientKey: 'id_cliente',
+    fields: [
+      {
+        field: 'status',
+        label: 'Status da OS',
+        type: 'enum',
+        options: [
+          { value: 'A', label: 'Aberta' },
+          { value: 'AN', label: 'Análise' },
+          { value: 'EN', label: 'Encaminhada' },
+          { value: 'AS', label: 'Assumida' },
+          { value: 'AG', label: 'Agendada' },
+          { value: 'DS', label: 'Deslocamento' },
+          { value: 'EX', label: 'Em execução' },
+          { value: 'F', label: 'Finalizada' },
+          { value: 'RAG', label: 'Aguardando reagendamento' },
+        ],
+      },
+      { field: 'id_tecnico', label: 'Colaborador (técnico)', type: 'enum', lookup: 'colaborador' },
+      { field: 'id_assunto', label: 'Assunto', type: 'enum', lookup: 'assunto' },
+      { field: 'mensagem', label: 'Mensagem da OS', type: 'text' },
+      { field: 'mensagem_resposta', label: 'Mensagem de resposta/fechamento', type: 'text' },
+      { field: 'data_abertura', label: 'Data de abertura', type: 'datetime' },
+      { field: 'data_agenda', label: 'Data agendada', type: 'datetime' },
+      { field: 'data_fechamento', label: 'Data de fechamento', type: 'datetime' },
+      { field: 'bairro', label: 'Bairro da OS', type: 'text' },
+      { field: 'id_cidade', label: 'Cidade da OS', type: 'enum', lookup: 'cidade' },
+      { field: 'protocolo', label: 'Protocolo', type: 'text' },
+      { field: 'id', label: 'Número da OS', type: 'number' },
+    ],
+  },
+  {
+    table: 'sendtec',
+    label: 'Relacionamento',
+    clientKey: 'id',
+    virtual: true,
+    fields: [
+      {
+        field: 'aniversario',
+        label: 'Aniversário',
+        type: 'enum',
+        ops: ['='],
+        options: [
+          { value: 'hoje', label: 'Faz aniversário hoje' },
+          { value: 'semana', label: 'Nos próximos 7 dias' },
+          { value: 'mes', label: 'Neste mês' },
+        ],
+      },
+      {
+        field: 'pagamento',
+        label: 'Histórico de pagamento',
+        type: 'enum',
+        ops: ['='],
+        options: [
+          { value: 'em_dia_6', label: 'Bom pagador (em dia nos últimos 6 meses)' },
+          { value: 'em_dia_12', label: 'Bom pagador (em dia nos últimos 12 meses)' },
+          { value: 'atrasou_6', label: 'Atrasou nos últimos 6 meses' },
+          { value: 'atrasou_12', label: 'Atrasou nos últimos 12 meses' },
+        ],
+      },
+      { field: 'tempo_casa', label: 'Tempo de casa (meses, pela 1ª ativação)', type: 'number', ops: ['>=', '<='] },
     ],
   },
 ];
