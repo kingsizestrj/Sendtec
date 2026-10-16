@@ -57,7 +57,7 @@ export class CampaignsService {
     return { ...c, counts };
   }
 
-  private async validate(input: CampaignInput) {
+  async validate(input: CampaignInput) {
     if (!input.name?.trim()) throw new BadRequestException('Dê um nome para a campanha');
     const template = await this.prisma.template.findUnique({ where: { id: input.templateId } });
     if (!template) throw new BadRequestException('Escolha um modelo');

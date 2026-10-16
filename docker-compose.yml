@@ -24,10 +24,12 @@ services:
       DATABASE_URL: postgresql://sendtec:${DB_PASSWORD:-sendtec}@db:5432/sendtec
       # dentro do container a aplicação sempre ouve na 3000; PORT do .env só define a porta do servidor
       PORT: "3000"
+      UPDATES_DIR: /updates
     ports:
       - "${PORT:-3000}:3000"
     volumes:
       - uploads:/data/uploads
+      - updates:/updates
 
   # Backup diário do banco: guarda os últimos BACKUP_KEEP_DAYS dias em ./backups
   backup:
@@ -60,6 +62,22 @@ services:
           sleep 600
         done
 
+  # Atualização pela tela (Configurações > Atualizações). Só este serviço acessa o Docker do servidor;
+  # a pasta do Sendtec é montada no mesmo caminho para o docker compose funcionar daqui de dentro.
+  updater:
+    image: docker:27-cli
+    restart: unless-stopped
+    working_dir: ${PWD}
+    environment:
+      REPO_DIR: ${PWD}
+      UPDATES_DIR: /updates
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+      - updates:/updates
+    entrypoint: ["/bin/sh", "${PWD}/updater/updater.sh"]
+
 volumes:
   pgdata:
   uploads:
+  updates:

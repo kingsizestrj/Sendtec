@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Header, Param, Post, Query } from '@nestjs/common';
 import { AudienceService, AudienceSpec } from './audience.service';
 import { IXC_TABLES, OPERATORS, VARIABLE_SOURCES } from './ixc.catalog';
 
@@ -20,6 +20,17 @@ export class IxcController {
   @Get('fields/:table')
   fields(@Param('table') table: string) {
     return this.audience.fieldsOf(table);
+  }
+
+  /** Exporta em CSV quem vai receber (respeitando filtros, áreas, removidos e repetidos). */
+  @Post('audience/export')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async export(@Body() spec: AudienceSpec) {
+    const { selected } = await this.audience.resolve(spec);
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const header = ['id', 'nome', 'telefone', 'bairro', 'cidade', 'latitude', 'longitude'];
+    const lines = selected.map((c) => [c.id, c.name, c.phone, c.bairro, c.cidade, c.lat?.toFixed(6), c.lng?.toFixed(6)].map(esc).join(';'));
+    return '\uFEFF' + [header.join(';'), ...lines].join('\n');
   }
 
   /** Prévia do público: devolve os clientes para o mapa e o resumo. */

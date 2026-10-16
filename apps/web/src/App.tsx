@@ -15,6 +15,9 @@ import { UsersPage } from './pages/Users';
 import { SettingsPage } from './pages/Settings';
 import { ResultsPage } from './pages/Results';
 import { ActivitiesPage } from './pages/Activities';
+import { AutomationsPage } from './pages/Automations';
+import { AutomationEditPage } from './pages/AutomationEdit';
+import { LgpdPage } from './pages/Lgpd';
 import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset';
 
 function Protected({ children, admin }: { children: ReactNode; admin?: boolean }) {
@@ -54,8 +57,12 @@ export function App() {
               <Route path="modelos" element={<TemplatesPage />} />
               <Route path="modelos/novo" element={<TemplateNewPage />} />
               <Route path="resultados" element={<ResultsPage />} />
+              <Route path="reguas" element={<AutomationsPage />} />
+              <Route path="reguas/nova" element={<AutomationEditPage />} />
+              <Route path="reguas/:id" element={<AutomationEditPage />} />
               <Route path="descadastros" element={<OptOutsPage />} />
               <Route path="usuarios" element={<Protected admin><UsersPage /></Protected>} />
+              <Route path="lgpd" element={<Protected admin><LgpdPage /></Protected>} />
               <Route path="atividades" element={<Protected admin><ActivitiesPage /></Protected>} />
               <Route path="configuracoes" element={<Protected admin><SettingsPage /></Protected>} />
             </Route>

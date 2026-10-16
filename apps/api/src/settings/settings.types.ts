@@ -33,6 +33,11 @@ export interface GeneralSettings {
   mapCenter: [number, number]; // [lat, lng]
   notifyPhones: string[]; // WhatsApp que recebem o resumo quando uma campanha termina
   notifyTemplateId: string; // modelo de utilidade com {{1}} usado nesses avisos
+  timezone: string; // fuso usado nas réguas automáticas
+}
+
+export interface LgpdSettings {
+  retentionMonths: number; // 0 = não anonimizar automaticamente
 }
 
 export interface SmtpSettings {
@@ -50,6 +55,7 @@ export interface AllSettings {
   meta: MetaSettings;
   general: GeneralSettings;
   smtp: SmtpSettings;
+  lgpd: LgpdSettings;
 }
 
 export const DEFAULT_SETTINGS: AllSettings = {
@@ -65,7 +71,9 @@ export const DEFAULT_SETTINGS: AllSettings = {
     mapCenter: [-15.78, -47.93],
     notifyPhones: [],
     notifyTemplateId: '',
+    timezone: 'America/Sao_Paulo',
   },
+  lgpd: { retentionMonths: 0 },
   smtp: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
 };
 
@@ -76,4 +84,5 @@ export const SECRET_FIELDS: Record<keyof AllSettings, string[]> = {
   meta: ['accessToken'],
   general: [],
   smtp: ['pass'],
+  lgpd: [],
 };

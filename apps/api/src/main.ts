@@ -39,4 +39,7 @@ async function bootstrap() {
   await app.listen(port);
   Logger.log(`Sendtec rodando em http://localhost:${port}`, 'Bootstrap');
 }
+// rede de segurança: um erro esquecido em segundo plano nunca derruba o servidor inteiro
+process.on('unhandledRejection', (reason) => Logger.error(`Erro não tratado: ${reason instanceof Error ? reason.stack : reason}`, 'Process'));
+
 bootstrap();

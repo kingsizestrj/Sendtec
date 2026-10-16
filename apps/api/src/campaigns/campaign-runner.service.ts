@@ -55,8 +55,29 @@ export class CampaignRunner {
       ? new Set((await this.prisma.optOut.findMany({ select: { phone: true } })).map((o) => o.phone))
       : new Set<string>();
 
+    // régua: não reenviar a mesma etapa para quem recebeu há menos de N dias
+    const recent = new Set<string>();
+    let cooldown = 0;
+    if (campaign.automationStepId) {
+      const step = await this.prisma.automationStep.findUnique({ where: { id: campaign.automationStepId } });
+      cooldown = step?.cooldownDays ?? 0;
+      if (cooldown > 0) {
+        const since = new Date(Date.now() - cooldown * 24 * 3600 * 1000);
+        const rows = await this.prisma.campaignRecipient.findMany({
+          where: {
+            sentAt: { gte: since },
+            status: { in: ['SENT', 'DELIVERED', 'READ'] },
+            campaign: { automationStepId: campaign.automationStepId, id: { not: campaign.id } },
+          },
+          select: { phone: true },
+        });
+        rows.forEach((r) => recent.add(r.phone));
+      }
+    }
+
     const rows: Prisma.CampaignRecipientCreateManyInput[] = result.selected.map((c) => {
       const out = optedOut.has(c.phone!);
+      const repeated = !out && recent.has(c.phone!);
       return {
         campaignId: campaign.id,
         ixcClientId: c.id,
@@ -65,8 +86,12 @@ export class CampaignRunner {
         latitude: c.lat,
         longitude: c.lng,
         clientData: result.raw.get(c.id) as unknown as Prisma.InputJsonValue,
-        status: out ? 'SKIPPED' : 'PENDING',
-        error: out ? 'Cliente pediu para não receber mensagens (opt-out)' : null,
+        status: out || repeated ? 'SKIPPED' : 'PENDING',
+        error: out
+          ? 'Cliente pediu para não receber mensagens (opt-out)'
+          : repeated
+            ? `Já recebeu esta etapa da régua nos últimos ${cooldown} dia(s)`
+            : null,
       };
     });
     for (let i = 0; i < rows.length; i += 1000) {
@@ -82,7 +107,10 @@ export class CampaignRunner {
     this.run(campaignId)
       .catch(async (e) => {
         this.logger.error(`Campanha ${campaignId} falhou: ${e.message}`);
-        await this.prisma.campaign.update({ where: { id: campaignId }, data: { status: 'FAILED', error: e.message, finishedAt: new Date() } });
+        // updateMany não falha se a campanha foi excluída no meio do envio
+        await this.prisma.campaign
+          .updateMany({ where: { id: campaignId }, data: { status: 'FAILED', error: String(e.message).slice(0, 500), finishedAt: new Date() } })
+          .catch((err) => this.logger.error(`Não foi possível marcar a campanha ${campaignId} como falha: ${err.message}`));
       })
       .finally(() => this.running.delete(campaignId));
   }
@@ -246,6 +274,9 @@ export class CampaignRunner {
   }
 
   private async notifyFinished(campaignId: string, name: string) {
+    // execuções de régua não geram aviso (rodam todo dia; o histórico fica na página da régua)
+    const c = await this.prisma.campaign.findUnique({ where: { id: campaignId }, select: { automationId: true } });
+    if (c?.automationId) return;
     const grouped = await this.prisma.campaignRecipient.groupBy({ by: ['status'], where: { campaignId }, _count: true });
     const n = (s: string) => grouped.find((g) => g.status === s)?._count ?? 0;
     const sent = n('SENT') + n('DELIVERED') + n('READ');

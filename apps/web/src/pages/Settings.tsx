@@ -1,5 +1,6 @@
 import { BellRing, CheckCircle2, Copy, Database, Globe, Mail, MessagesSquare, PlugZap, Save, Sparkles, XCircle } from 'lucide-react';
 import type { Template } from '../lib/types';
+import { UpdatePanel } from '../components/UpdatePanel';
 import { ReactNode, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, Card, Field, PageHeader, Spinner, Toggle, useToast } from '../components/ui';
@@ -117,6 +118,8 @@ export function SettingsPage() {
         }
       />
       <div className="space-y-6">
+        <UpdatePanel />
+
         <Section icon={<Database className="h-5 w-5" />} title="IXC Provedor" subtitle="Fonte dos clientes, contratos e faturas" onTest={() => test('ixc')} testing={testing === 'ixc'} result={results.ixc}>
           <Field label="URL do IXC" hint="Ex.: https://ixc.seuprovedor.com.br">
             <input className="input" value={s.ixc.baseUrl} onChange={(e) => set('ixc', 'baseUrl', e.target.value)} />

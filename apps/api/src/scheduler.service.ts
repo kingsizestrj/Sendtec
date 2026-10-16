@@ -5,6 +5,9 @@ import { TemplatesService } from './templates/templates.service';
 import { SettingsService } from './settings/settings.service';
 import { RecipientStatusService } from './campaigns/recipient-status.service';
 import { HealthService } from './health/health.service';
+import { AutomationsService } from './automations/automations.service';
+import { applyRetention } from './lgpd/lgpd.controller';
+import { zonedNow } from './common/time';
 
 /**
  * Tarefas periódicas:
@@ -25,7 +28,10 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     private settings: SettingsService,
     private statuses: RecipientStatusService,
     private health: HealthService,
+    private automations: AutomationsService,
   ) {}
+
+  private lastRetentionDate = '';
 
   async onApplicationBootstrap() {
     await this.runner.recover();
@@ -36,10 +42,23 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     // saúde das integrações: na subida e a cada 5 minutos
     this.health.check().catch(() => undefined);
     this.timers.push(setInterval(() => this.health.check().catch(() => undefined), 5 * 60_000));
+    // réguas automáticas: confere a cada minuto se alguma etapa chegou no horário
+    this.timers.push(setInterval(() => this.automations.tick().catch((e) => this.logger.error(`Réguas: ${e.message}`)), 60_000));
+    // LGPD: retenção uma vez por dia
+    this.timers.push(setInterval(() => this.retention().catch((e) => this.logger.warn(`Retenção: ${e.message}`)), 30 * 60_000));
   }
 
   onModuleDestroy() {
     this.timers.forEach(clearInterval);
+  }
+
+  private async retention() {
+    const today = zonedNow().date;
+    if (this.lastRetentionDate === today) return;
+    this.lastRetentionDate = today;
+    const { retentionMonths } = await this.settings.get('lgpd');
+    const n = await applyRetention(this.prisma, retentionMonths);
+    if (n) this.logger.log(`LGPD: ${n} registro(s) antigos anonimizados`);
   }
 
   private async tickCampaigns() {

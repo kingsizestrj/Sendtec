@@ -33,6 +33,11 @@ import { AuditController } from './audit/audit.controller';
 import { MailService } from './mail/mail.service';
 import { HealthService } from './health/health.service';
 import { HealthController } from './health/health.controller';
+import { AudiencesController } from './audiences/audiences.controller';
+import { AutomationsService } from './automations/automations.service';
+import { AutomationsController } from './automations/automations.controller';
+import { SystemController } from './system/system.controller';
+import { LgpdController } from './lgpd/lgpd.controller';
 
 const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist');
 
@@ -55,6 +60,10 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     ResultsController,
     AuditController,
     HealthController,
+    AudiencesController,
+    AutomationsController,
+    SystemController,
+    LgpdController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
@@ -74,6 +83,7 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     AuditService,
     MailService,
     HealthService,
+    AutomationsService,
   ],
 })
 export class AppModule {}

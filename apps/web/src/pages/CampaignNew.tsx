@@ -10,92 +10,14 @@ import type { Area, AudienceFilter, AudienceResult, Campaign, Catalog, CsvAudien
 import { AudienceMap, MapPoint } from '../components/AudienceMap';
 import { FilterBuilder } from '../components/FilterBuilder';
 import { CsvUploader } from '../components/CsvUploader';
+import { MappingEditor } from '../components/MappingEditor';
+import { AudienceToolbar } from '../components/AudienceToolbar';
 import { TestSendModal } from '../components/TestSendModal';
 import { QUALITY, useNumberHealth } from '../components/NumberHealth';
 import { PhonePreview } from '../components/PhonePreview';
 import { Button, Card, Field, PageHeader, Spinner, StatusBadge, Toggle, useToast } from '../components/ui';
 
 const STEPS = ['Modelo', 'Público', 'Personalização', 'Revisão'];
-const FORMATS = [
-  { v: 'none', l: 'Como está' },
-  { v: 'title', l: 'Nome Próprio' },
-  { v: 'upper', l: 'MAIÚSCULAS' },
-  { v: 'date', l: 'Data (dd/mm/aaaa)' },
-  { v: 'money', l: 'Moeda (R$)' },
-];
-
-function MappingEditor({
-  catalog,
-  value,
-  onChange,
-  csv,
-}: {
-  catalog: Catalog;
-  value?: VariableMapping;
-  onChange: (m: VariableMapping) => void;
-  csv?: CsvAudience | null;
-}) {
-  // planilha sem código do IXC: só dados da própria planilha (e nome)
-  const sources = csv ? catalog.variableSources.filter((s) => s.source === 'cliente' || csv.ixcIdColumn) : catalog.variableSources;
-  const key = value ? (value.source === 'fixo' ? 'fixo' : `${value.source}.${value.field}`) : '';
-  return (
-    <div className="grid gap-2 sm:grid-cols-[1.3fr_1fr]">
-      <select
-        className="input"
-        value={key}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === 'fixo') return onChange({ source: 'fixo', value: value?.value ?? '' });
-          const dot = v.indexOf('.');
-          const [source, field] = [v.slice(0, dot), v.slice(dot + 1)];
-          const format = source === 'csv' ? 'none' : field === 'valor' || field === 'valor_aberto' ? 'money' : field.startsWith('data_') ? 'date' : field === 'primeiro_nome' || field === 'razao' ? 'title' : 'none';
-          onChange({ source: source as VariableMapping['source'], field, format, fallback: value?.fallback });
-        }}
-      >
-        <option value="">Escolha o dado…</option>
-        {csv && (
-          <optgroup label="Planilha (CSV)">
-            {csv.columns.map((c) => (
-              <option key={c} value={`csv.${c}`}>
-                {c}
-              </option>
-            ))}
-          </optgroup>
-        )}
-        {sources.map((s) => (
-          <optgroup key={s.source} label={s.label}>
-            {s.fields.filter((f) => !csv || s.source !== 'cliente' || ['primeiro_nome', 'razao'].includes(f.field) || csv.ixcIdColumn).map((f) => (
-              <option key={f.field} value={`${s.source}.${f.field}`}>
-                {f.label}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-        <option value="fixo">✏️ Texto fixo</option>
-      </select>
-      {value?.source === 'fixo' ? (
-        <input className="input" placeholder="Texto para todos" value={value.value ?? ''} onChange={(e) => onChange({ ...value, value: e.target.value })} />
-      ) : (
-        <select className="input" value={value?.format ?? 'none'} disabled={!value} onChange={(e) => onChange({ ...value!, format: e.target.value })}>
-          {FORMATS.map((f) => (
-            <option key={f.v} value={f.v}>
-              {f.l}
-            </option>
-          ))}
-        </select>
-      )}
-      {value && value.source !== 'fixo' && (
-        <input
-          className="input sm:col-span-2"
-          placeholder="Se o campo estiver vazio, usar… (ex.: cliente)"
-          value={value.fallback ?? ''}
-          onChange={(e) => onChange({ ...value, fallback: e.target.value })}
-        />
-      )}
-    </div>
-  );
-}
-
 export function CampaignNewPage() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -112,6 +34,7 @@ export function CampaignNewPage() {
   const [template, setTemplate] = useState<Template | null>(null);
   const [filters, setFilters] = useState<AudienceFilter[]>([{ table: 'cliente', field: 'ativo', op: '=', value: 'S' }]);
   const [source, setSource] = useState<'ixc' | 'csv'>('ixc');
+  const [mapKey, setMapKey] = useState(0);
   const [csv, setCsv] = useState<CsvAudience | null>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);
@@ -416,6 +339,19 @@ export function CampaignNewPage() {
             ))}
           </div>
 
+          {(source === 'ixc' || csv) && (
+            <AudienceToolbar
+              spec={spec}
+              canSave={source === 'ixc'}
+              onLoad={(a) => {
+                setFilters(a.filters ?? []);
+                setAreas(a.areas ?? []);
+                setExcluded(a.excludedClientIds ?? []);
+                setMapKey((k) => k + 1);
+              }}
+            />
+          )}
+
           {source === 'csv' ? (
             <Card className="p-6">
               <h3 className="mb-4 font-bold">Planilha com os clientes</h3>
@@ -452,7 +388,7 @@ export function CampaignNewPage() {
                   <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-full bg-[#4b4669]" /> Fora da área</span>
                 </div>
               </div>
-              <AudienceMap center={mapCenter} points={points} areas={areas} onAreasChange={setAreas} />
+              <AudienceMap key={mapKey} center={mapCenter} points={points} areas={areas} onAreasChange={setAreas} />
               <p className="mt-3 px-2 text-xs text-ink-400">
                 Use as ferramentas à esquerda do mapa para desenhar polígonos, retângulos ou círculos. Sem nenhuma área, todos os clientes filtrados entram — inclusive os sem coordenadas.
                 Clique em um ponto para removê-lo da campanha.

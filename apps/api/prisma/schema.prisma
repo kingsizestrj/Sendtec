@@ -21,6 +21,8 @@ model User {
   active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   campaigns    Campaign[]
+  automations  Automation[]
+  audiences    SavedAudience[]
 }
 
 // Configurações (IXC, Chatwoot, Meta). O valor é JSON criptografado com APP_SECRET.
@@ -46,6 +48,7 @@ model Template {
   language       String
   category       String
   status         String     @default("PENDING")
+  automationSteps AutomationStep[]
   rejectedReason String?
   qualityScore   String?
   components     Json
@@ -89,6 +92,13 @@ model Campaign {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
   recipients    CampaignRecipient[]
+  // preenchidos quando a campanha foi criada por uma régua automática
+  automationId     String?
+  automation       Automation?     @relation(fields: [automationId], references: [id], onDelete: SetNull)
+  automationStepId String?
+  automationStep   AutomationStep? @relation(fields: [automationStepId], references: [id], onDelete: SetNull)
+
+  @@index([automationStepId])
 }
 
 enum RecipientStatus {
@@ -162,4 +172,50 @@ model PasswordReset {
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime  @default(now())
+}
+
+// Público salvo (filtros do IXC + áreas do mapa) para reutilizar em campanhas e réguas
+model SavedAudience {
+  id          String           @id @default(uuid())
+  name        String
+  audience    Json
+  createdById String
+  createdBy   User             @relation(fields: [createdById], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  steps       AutomationStep[]
+}
+
+// Régua automática: conjunto de etapas que rodam sozinhas todo dia
+model Automation {
+  id          String           @id @default(uuid())
+  name        String
+  active      Boolean          @default(false)
+  weekdays    Int[]            @default([1, 2, 3, 4, 5, 6]) // 0 = domingo
+  createdById String
+  createdBy   User             @relation(fields: [createdById], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  steps       AutomationStep[]
+  campaigns   Campaign[]
+}
+
+model AutomationStep {
+  id              String         @id @default(uuid())
+  automationId    String
+  automation      Automation     @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  position        Int            @default(0)
+  name            String
+  time            String         // "09:00", horário de Brasília
+  templateId      String
+  template        Template       @relation(fields: [templateId], references: [id])
+  savedAudienceId String?        // se preenchido, usa o público salvo (sempre a versão atual)
+  savedAudience   SavedAudience? @relation(fields: [savedAudienceId], references: [id], onDelete: SetNull)
+  audience        Json
+  variables       Json
+  headerMediaUrl  String?
+  cooldownDays    Int            @default(7) // não reenviar esta etapa para quem recebeu nos últimos N dias
+  lastRunDate     String?        // "2026-10-16" (data local da última execução)
+  lastResult      String?
+  campaigns       Campaign[]
 }

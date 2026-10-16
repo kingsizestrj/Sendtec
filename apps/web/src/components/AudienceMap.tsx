@@ -20,11 +20,11 @@ function PointsLayer({ points, fit }: { points: MapPoint[]; fit: boolean }) {
   const map = useMap();
   const fitted = useRef(false);
   useEffect(() => {
-    const renderer = L.canvas({ padding: 0.5 });
+    // mesmo canvas das áreas desenhadas: um canvas próprio ficaria por cima e "engoliria" os cliques
+    // (era o que impedia arrastar e remover áreas)
     const group = L.layerGroup();
     for (const p of points) {
       const m = L.circleMarker([p.lat, p.lng], {
-        renderer,
         radius: p.radius ?? 5,
         color: '#0d0b18',
         weight: 1,
@@ -68,9 +68,12 @@ function DrawTools({ initial, onChange }: { initial: Area[]; onChange: (areas: A
 
   useEffect(() => {
     const emit = () => cb.current([...layers.current].map(toArea).filter(Boolean) as Area[]);
+    const toBack = (layer: L.Layer) => (layer as L.Path).bringToBack?.();
     const watch = (layer: L.Layer) => {
       layers.current.add(layer);
       layer.on('pm:edit pm:dragend', emit);
+      layer.on('pm:dragend pm:edit', () => toBack(layer));
+      toBack(layer);
     };
 
     map.pm.setLang('pt_br');

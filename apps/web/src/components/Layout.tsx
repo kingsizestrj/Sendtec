@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { Ban, History, LayoutDashboard, LogOut, MapPinned, Megaphone, Menu, MessageSquareText, Moon, Settings, Sun, Users, X } from 'lucide-react';
+import { Ban, History, LayoutDashboard, LogOut, MapPinned, Megaphone, Menu, MessageSquareText, Moon, Repeat, Settings, ShieldCheck, Sun, Users, X } from 'lucide-react';
 import { AccountModal } from './AccountModal';
 import { IntegrationBanner } from './IntegrationBanner';
 import { useState } from 'react';
@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth';
 const NAV = [
   { to: '/', label: 'Visão geral', icon: LayoutDashboard, end: true as boolean | undefined },
   { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
+  { to: '/reguas', label: 'Réguas', icon: Repeat },
   { to: '/modelos', label: 'Modelos', icon: MessageSquareText },
   { to: '/resultados', label: 'Resultados', icon: MapPinned },
   { to: '/descadastros', label: 'Descadastros', icon: Ban },
@@ -16,6 +17,7 @@ const NAV = [
 const ADMIN_NAV: typeof NAV = [
   { to: '/usuarios', label: 'Usuários', icon: Users },
   { to: '/atividades', label: 'Atividades', icon: History },
+  { to: '/lgpd', label: 'LGPD', icon: ShieldCheck },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 

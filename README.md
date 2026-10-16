@@ -21,6 +21,9 @@ Disparo de modelos do WhatsApp (API oficial da Meta) para clientes do **IXC Prov
 - **Resultados**: mapa por região e ranking por bairro de entrega, leitura e falhas; respostas aos botões por campanha.
 - **Avisos por WhatsApp** quando uma campanha termina, **monitor das integrações** (faixa de alerta se IXC, Chatwoot ou Meta caírem) e **registro de atividades**.
 - **Duplicar e desagendar campanhas**, criar modelo a partir de outro, importar descadastros por planilha.
+- **Réguas automáticas**: etapas que rodam sozinhas todo dia (ex.: cobrança D-3, D+2, D+7; aniversariantes), com público recalculado no IXC, dias da semana e regra de "não reenviar em N dias".
+- **Públicos salvos** (filtros + áreas do mapa) e **exportação do público em CSV** antes de disparar.
+- **Atualização pela tela** (administradores) e **página LGPD**: consulta e exportação dos dados de um titular, anonimização, histórico de descadastros e retenção automática.
 - **Backup diário automático**, troca de senha pelo próprio usuário, "esqueci minha senha" por e-mail e **modo claro/escuro**.
 - **Perfis de acesso**: Administrador (integrações e usuários) e Operador (modelos e campanhas).
 

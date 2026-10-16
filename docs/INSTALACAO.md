@@ -163,6 +163,17 @@ Confira:
 
 ---
 
+## 10. Atualizações pela tela
+
+O serviço `updater` (do `docker-compose.yml`) cuida das atualizações: ele verifica o GitHub a cada 30 minutos e, quando um **administrador** clica em **Configurações → Atualizações → Atualizar**, roda `git pull` e reconstrói o Sendtec (o painel fica fora do ar por 1 a 3 minutos; campanhas em andamento continuam de onde pararam).
+
+- Sempre rode o `docker compose` **de dentro da pasta do Sendtec** (o atualizador usa esse caminho).
+- O `updater` tem acesso ao Docker do servidor (é o que permite reconstruir o app). Ele não fica exposto na rede: só lê pedidos feitos pelo painel, que exige login de administrador.
+- Se o repositório for privado, o `git pull` usa as credenciais configuradas na pasta clonada (ex.: token na URL do `origin`).
+- Mudanças no próprio atualizador (raras) pedem uma vez `git pull && docker compose up -d --build` no servidor.
+
+---
+
 ## Manutenção
 
 - **Atualizar** para uma versão nova:

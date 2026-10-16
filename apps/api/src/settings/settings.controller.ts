@@ -40,7 +40,7 @@ export class SettingsController {
   async update(@Body() body: Partial<AllSettings>, @CurrentUser() user: AuthUser) {
     const before = await this.settings.masked();
     const changed: string[] = [];
-    for (const section of ['ixc', 'chatwoot', 'meta', 'general', 'smtp'] as const) {
+    for (const section of ['ixc', 'chatwoot', 'meta', 'general', 'smtp', 'lgpd'] as const) {
       if (!body[section]) continue;
       await this.settings.update(section, body[section]!);
       if (JSON.stringify((await this.settings.masked())[section]) !== JSON.stringify(before[section])) changed.push(section);
