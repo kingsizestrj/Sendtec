@@ -3,10 +3,12 @@ import { PrismaService } from './prisma.service';
 import { CampaignRunner } from './campaigns/campaign-runner.service';
 import { TemplatesService } from './templates/templates.service';
 import { SettingsService } from './settings/settings.service';
+import { RecipientStatusService } from './campaigns/recipient-status.service';
 
 /**
  * Tarefas periódicas:
  *  - inicia campanhas agendadas
+ *  - acompanha entregas/leituras das mensagens no Chatwoot
  *  - acompanha a aprovação dos modelos na Meta (a cada 2 min se houver pendentes, senão a cada 30 min)
  */
 @Injectable()
@@ -20,12 +22,15 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     private runner: CampaignRunner,
     private templates: TemplatesService,
     private settings: SettingsService,
+    private statuses: RecipientStatusService,
   ) {}
 
   async onApplicationBootstrap() {
     await this.runner.recover();
     this.timers.push(setInterval(() => this.tickCampaigns().catch((e) => this.logger.error(e.message)), 20_000));
     this.timers.push(setInterval(() => this.tickTemplates().catch((e) => this.logger.warn(e.message)), 60_000));
+    // entregas e leituras: confere no Chatwoot a cada minuto (independe do webhook)
+    this.timers.push(setInterval(() => this.statuses.poll().catch((e) => this.logger.warn(e.message)), 60_000));
   }
 
   onModuleDestroy() {

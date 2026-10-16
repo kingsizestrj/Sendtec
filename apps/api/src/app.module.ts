@@ -20,6 +20,7 @@ import { TemplatesController } from './templates/templates.controller';
 import { ChatwootClient } from './chatwoot/chatwoot.client';
 import { VariablesService } from './campaigns/variables.service';
 import { CampaignRunner } from './campaigns/campaign-runner.service';
+import { RecipientStatusService } from './campaigns/recipient-status.service';
 import { CampaignsService } from './campaigns/campaigns.service';
 import { CampaignsController } from './campaigns/campaigns.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
@@ -58,6 +59,7 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     ChatwootClient,
     VariablesService,
     CampaignRunner,
+    RecipientStatusService,
     CampaignsService,
     SchedulerService,
   ],

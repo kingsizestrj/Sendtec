@@ -151,6 +151,17 @@ export class ChatwootClient {
     }
   }
 
+  /** Mensagens de uma conversa a partir de um id (inclui status: sent, delivered, read, failed). */
+  async conversationMessages(conversationId: number, fromMessageId: number): Promise<any[]> {
+    const cfg = await this.settings.get('chatwoot');
+    try {
+      const { data } = await this.http(cfg).get(`conversations/${conversationId}/messages`, { params: { after: fromMessageId - 1 } });
+      return (data?.payload ?? []) as any[];
+    } catch (e) {
+      this.fail(e, 'mensagens');
+    }
+  }
+
   async addLabels(conversationId: number, labels: string[]) {
     const cfg = await this.settings.get('chatwoot');
     try {
