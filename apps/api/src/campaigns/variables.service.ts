@@ -4,7 +4,7 @@ import { AudienceService } from '../ixc/audience.service';
 import { firstName, formatDate, formatMoney, titleCase } from '../common/text';
 
 export interface VariableMapping {
-  source: 'cliente' | 'contrato' | 'fatura' | 'fixo';
+  source: 'cliente' | 'contrato' | 'fatura' | 'csv' | 'fixo';
   field?: string;
   value?: string; // texto fixo
   fallback?: string;
@@ -35,18 +35,20 @@ export class VariablesService {
   }
 
   async resolve(cfg: VariablesConfig, client: IxcRecord): Promise<ResolvedParams> {
-    const ctx: Record<string, IxcRecord | null> = { cliente: { ...client }, contrato: null, fatura: null };
+    const csvRow = (client as unknown as { __csv?: IxcRecord }).__csv ?? null;
+    const ctx: Record<string, IxcRecord | null> = { cliente: { ...client }, contrato: null, fatura: null, csv: csvRow };
 
     if (this.needs(cfg, 'cliente')) {
       ctx.cliente!.primeiro_nome = firstName(client.razao || client.fantasia || '');
       const cities = await this.audience.cityNames().catch(() => new Map<string, string>());
       ctx.cliente!.cidade_nome = cities.get(String(client.cidade)) ?? '';
     }
-    if (this.needs(cfg, 'contrato')) {
+    const hasIxcId = /^\d+$/.test(String(client.id));
+    if (this.needs(cfg, 'contrato') && hasIxcId) {
       const rows = await this.ixc.all('cliente_contrato', [{ TB: 'cliente_contrato.id_cliente', OP: '=', P: String(client.id) }]);
       ctx.contrato = rows.find((r) => r.status === 'A') ?? rows[0] ?? null;
     }
-    if (this.needs(cfg, 'fatura')) {
+    if (this.needs(cfg, 'fatura') && hasIxcId) {
       // títulos em aberto, como na documentação do IXC: liberados e não recebidos/cancelados (inclui parciais)
       const rows = await this.ixc.all('fn_areceber', [
         { TB: 'fn_areceber.id_cliente', OP: '=', P: String(client.id) },

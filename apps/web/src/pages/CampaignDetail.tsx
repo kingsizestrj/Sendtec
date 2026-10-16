@@ -268,7 +268,7 @@ export function CampaignDetailPage() {
                   <tr key={r.id}>
                     <td className="py-3 pr-4">
                       <div className="font-medium">{r.name}</div>
-                      <div className="text-xs text-ink-400">IXC #{r.ixcClientId}</div>
+                      <div className="text-xs text-ink-400">{r.ixcClientId.startsWith('linha-') ? `Planilha, linha ${r.ixcClientId.slice(6)}` : `IXC #${r.ixcClientId}`}</div>
                     </td>
                     <td className="whitespace-nowrap py-3 pr-4 text-ink-300">{fmtPhone(r.phone)}</td>
                     <td className="py-3 pr-4">

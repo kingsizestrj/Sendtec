@@ -18,7 +18,8 @@ export interface Template {
 
 export type Area = { type: 'Polygon'; coordinates: number[][][] } | { type: 'Circle'; center: [number, number]; radius: number };
 export interface AudienceFilter { table: string; field: string; op: string; value: string; value2?: string }
-export interface AudienceSpec { filters: AudienceFilter[]; areas: Area[]; excludedClientIds: string[] }
+export interface CsvAudience { columns: string[]; phoneColumn: string; nameColumn?: string; ixcIdColumn?: string; rows: Record<string, string>[] }
+export interface AudienceSpec { source?: 'ixc' | 'csv'; filters: AudienceFilter[]; areas: Area[]; excludedClientIds: string[]; csv?: CsvAudience }
 export interface AudienceClient { id: string; name: string; phone: string | null; lat: number | null; lng: number | null; bairro: string; cidade: string; inArea: boolean }
 export interface AudienceResult {
   clients: AudienceClient[];
@@ -26,7 +27,7 @@ export interface AudienceResult {
   stats: { matched: number; withCoords: number; inArea: number; withoutPhone: number; duplicates: number; excluded: number; selected: number };
 }
 
-export interface VariableMapping { source: 'cliente' | 'contrato' | 'fatura' | 'fixo'; field?: string; value?: string; fallback?: string; format?: string }
+export interface VariableMapping { source: 'cliente' | 'contrato' | 'fatura' | 'csv' | 'fixo'; field?: string; value?: string; fallback?: string; format?: string }
 export interface VariablesConfig { body: Record<string, VariableMapping>; buttons?: Record<string, VariableMapping> }
 
 export type CampaignStatus = 'DRAFT' | 'SCHEDULED' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | 'FAILED';

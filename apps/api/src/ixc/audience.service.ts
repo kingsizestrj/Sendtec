@@ -14,12 +14,25 @@ export interface AudienceFilter {
   value2?: string; // fim do intervalo (BE / NBE)
 }
 
+/** Lista enviada em planilha (CSV) no lugar dos filtros do IXC. */
+export interface CsvAudience {
+  columns: string[];
+  phoneColumn: string;
+  nameColumn?: string;
+  ixcIdColumn?: string; // opcional: permite usar variáveis de contrato/fatura do IXC
+  rows: Record<string, string>[];
+}
+
 export interface AudienceSpec {
+  source?: 'ixc' | 'csv';
   filters: AudienceFilter[];
   areas: Area[];
   excludedClientIds: string[];
   phoneFields?: string[];
+  csv?: CsvAudience;
 }
+
+export const MAX_CSV_ROWS = 20000;
 
 export interface AudienceClient {
   id: string;
@@ -104,6 +117,7 @@ export class AudienceService {
   }
 
   async resolve(spec: AudienceSpec, opts: { refresh?: boolean } = {}): Promise<AudienceResult & { raw: Map<string, IxcRecord> }> {
+    if (spec.source === 'csv') return this.resolveCsv(spec);
     const filters = spec.filters ?? [];
     const byTable = new Map<string, AudienceFilter[]>();
     for (const f of filters) {
@@ -199,6 +213,48 @@ export class AudienceService {
         excluded: excludedCount,
         selected: selected.length,
       },
+    };
+  }
+
+  /** Público vindo de planilha: valida telefones, tira repetidos e removidos. */
+  private async resolveCsv(spec: AudienceSpec): Promise<AudienceResult & { raw: Map<string, IxcRecord> }> {
+    const csv = spec.csv;
+    if (!csv?.rows?.length) throw new BadRequestException('Envie a planilha com os clientes');
+    if (csv.rows.length > MAX_CSV_ROWS) throw new BadRequestException(`A planilha pode ter no máximo ${MAX_CSV_ROWS} linhas`);
+    if (!csv.phoneColumn || !csv.columns.includes(csv.phoneColumn)) throw new BadRequestException('Escolha a coluna do telefone');
+    const { defaultDdd } = await this.settings.get('ixc');
+    const excluded = new Set((spec.excludedClientIds ?? []).map(String));
+
+    const raw = new Map<string, IxcRecord>();
+    const clients: AudienceClient[] = [];
+    csv.rows.forEach((row, i) => {
+      const ixcId = csv.ixcIdColumn ? String(row[csv.ixcIdColumn] ?? '').trim() : '';
+      const id = ixcId && /^\d+$/.test(ixcId) ? ixcId : `linha-${i + 2}`; // linha 1 é o cabeçalho
+      const name = String((csv.nameColumn && row[csv.nameColumn]) || '').trim() || `Linha ${i + 2}`;
+      const phone = normalizeBrPhone(row[csv.phoneColumn], defaultDdd || undefined);
+      raw.set(id, { id, razao: name, __csv: row } as unknown as IxcRecord);
+      clients.push({ id, name, phone, lat: null, lng: null, bairro: '', cidade: '', inArea: true });
+    });
+
+    const seen = new Set<string>();
+    const selected: AudienceClient[] = [];
+    let withoutPhone = 0;
+    let duplicates = 0;
+    let excludedCount = 0;
+    for (const c of clients) {
+      if (excluded.has(c.id)) excludedCount++;
+      else if (!c.phone) withoutPhone++;
+      else if (seen.has(c.phone)) duplicates++;
+      else {
+        seen.add(c.phone);
+        selected.push(c);
+      }
+    }
+    return {
+      raw,
+      clients,
+      selected,
+      stats: { matched: clients.length, withCoords: 0, inArea: clients.length, withoutPhone, duplicates, excluded: excludedCount, selected: selected.length },
     };
   }
 

@@ -60,6 +60,17 @@ export class CampaignsService {
     const template = await this.prisma.template.findUnique({ where: { id: input.templateId } });
     if (!template) throw new BadRequestException('Escolha um modelo');
     const info = componentsInfo(template.components as any[]);
+    if (input.audience?.source === 'csv') {
+      const csv = input.audience.csv;
+      if (!csv?.rows?.length || !csv.phoneColumn) throw new BadRequestException('Envie a planilha e escolha a coluna do telefone');
+      const mappings = [...Object.values(input.variables?.body ?? {}), ...Object.values(input.variables?.buttons ?? {})];
+      if (!csv.ixcIdColumn && mappings.some((m) => m.source === 'contrato' || m.source === 'fatura')) {
+        throw new BadRequestException('Para usar dados de contrato ou fatura, indique a coluna com o código do cliente no IXC');
+      }
+      if (mappings.some((m) => m.source === 'csv' && !csv.columns.includes(m.field ?? ''))) {
+        throw new BadRequestException('Uma variável aponta para uma coluna que não existe na planilha');
+      }
+    }
     for (let i = 1; i <= info.bodyVars; i++) {
       const m = input.variables?.body?.[String(i)];
       if (!m || (m.source === 'fixo' ? !m.value : !m.field)) throw new BadRequestException(`Defina o valor da variável {{${i}}}`);

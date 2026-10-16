@@ -6,9 +6,10 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtNumber, fmtPhone, localMedia } from '../lib/format';
 import { templateInfo } from '../lib/template';
-import type { Area, AudienceFilter, AudienceResult, Campaign, Catalog, Template, VariableMapping, VariablesConfig } from '../lib/types';
+import type { Area, AudienceFilter, AudienceResult, Campaign, Catalog, CsvAudience, Template, VariableMapping, VariablesConfig } from '../lib/types';
 import { AudienceMap, MapPoint } from '../components/AudienceMap';
 import { FilterBuilder } from '../components/FilterBuilder';
+import { CsvUploader } from '../components/CsvUploader';
 import { PhonePreview } from '../components/PhonePreview';
 import { Button, Card, Field, PageHeader, Spinner, StatusBadge, Toggle, useToast } from '../components/ui';
 
@@ -21,7 +22,19 @@ const FORMATS = [
   { v: 'money', l: 'Moeda (R$)' },
 ];
 
-function MappingEditor({ catalog, value, onChange }: { catalog: Catalog; value?: VariableMapping; onChange: (m: VariableMapping) => void }) {
+function MappingEditor({
+  catalog,
+  value,
+  onChange,
+  csv,
+}: {
+  catalog: Catalog;
+  value?: VariableMapping;
+  onChange: (m: VariableMapping) => void;
+  csv?: CsvAudience | null;
+}) {
+  // planilha sem código do IXC: só dados da própria planilha (e nome)
+  const sources = csv ? catalog.variableSources.filter((s) => s.source === 'cliente' || csv.ixcIdColumn) : catalog.variableSources;
   const key = value ? (value.source === 'fixo' ? 'fixo' : `${value.source}.${value.field}`) : '';
   return (
     <div className="grid gap-2 sm:grid-cols-[1.3fr_1fr]">
@@ -31,15 +44,25 @@ function MappingEditor({ catalog, value, onChange }: { catalog: Catalog; value?:
         onChange={(e) => {
           const v = e.target.value;
           if (v === 'fixo') return onChange({ source: 'fixo', value: value?.value ?? '' });
-          const [source, field] = v.split('.');
-          const format = field === 'valor' || field === 'valor_aberto' ? 'money' : field.startsWith('data_') ? 'date' : field === 'primeiro_nome' || field === 'razao' ? 'title' : 'none';
+          const dot = v.indexOf('.');
+          const [source, field] = [v.slice(0, dot), v.slice(dot + 1)];
+          const format = source === 'csv' ? 'none' : field === 'valor' || field === 'valor_aberto' ? 'money' : field.startsWith('data_') ? 'date' : field === 'primeiro_nome' || field === 'razao' ? 'title' : 'none';
           onChange({ source: source as VariableMapping['source'], field, format, fallback: value?.fallback });
         }}
       >
         <option value="">Escolha o dado…</option>
-        {catalog.variableSources.map((s) => (
+        {csv && (
+          <optgroup label="Planilha (CSV)">
+            {csv.columns.map((c) => (
+              <option key={c} value={`csv.${c}`}>
+                {c}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {sources.map((s) => (
           <optgroup key={s.source} label={s.label}>
-            {s.fields.map((f) => (
+            {s.fields.filter((f) => !csv || s.source !== 'cliente' || ['primeiro_nome', 'razao'].includes(f.field) || csv.ixcIdColumn).map((f) => (
               <option key={f.field} value={`${s.source}.${f.field}`}>
                 {f.label}
               </option>
@@ -86,6 +109,8 @@ export function CampaignNewPage() {
   const [templateId, setTemplateId] = useState('');
   const [template, setTemplate] = useState<Template | null>(null);
   const [filters, setFilters] = useState<AudienceFilter[]>([{ table: 'cliente', field: 'ativo', op: '=', value: 'S' }]);
+  const [source, setSource] = useState<'ixc' | 'csv'>('ixc');
+  const [csv, setCsv] = useState<CsvAudience | null>(null);
   const [areas, setAreas] = useState<Area[]>([]);
   const [excluded, setExcluded] = useState<string[]>([]);
   const [variables, setVariables] = useState<VariablesConfig>({ body: {}, buttons: {} });
@@ -109,6 +134,8 @@ export function CampaignNewPage() {
         setName(c.name);
         setTemplateId(c.templateId);
         setFilters(c.audience.filters ?? []);
+        setSource(c.audience.source ?? 'ixc');
+        setCsv(c.audience.csv ?? null);
         setAreas(c.audience.areas ?? []);
         setExcluded(c.audience.excludedClientIds ?? []);
         setVariables({ body: c.variables.body ?? {}, buttons: c.variables.buttons ?? {} });
@@ -126,7 +153,13 @@ export function CampaignNewPage() {
   const info = useMemo(() => templateInfo(template?.components), [template]);
   const isMarketing = template?.category === 'MARKETING';
 
-  const spec = useMemo(() => ({ filters: filters.filter((f) => f.field && f.value !== ''), areas, excludedClientIds: excluded }), [filters, areas, excluded]);
+  const spec = useMemo(
+    () =>
+      source === 'csv'
+        ? { source, filters: [], areas: [], excludedClientIds: excluded, csv: csv ?? undefined }
+        : { source, filters: filters.filter((f) => f.field && f.value !== ''), areas, excludedClientIds: excluded },
+    [source, csv, filters, areas, excluded],
+  );
 
   const loadAudience = useCallback(
     async (refresh = false) => {
@@ -146,9 +179,10 @@ export function CampaignNewPage() {
   // recalcula a prévia quando filtros/áreas mudam (o servidor guarda as consultas do IXC em cache)
   useEffect(() => {
     if (step !== 1) return;
+    if (source === 'csv' && !csv?.phoneColumn) return setAudience(null); // aguardando a planilha
     const t = setTimeout(() => loadAudience(), 500);
     return () => clearTimeout(t);
-  }, [step, loadAudience]);
+  }, [step, loadAudience, source, csv]);
 
   const toggleExclude = useCallback((cid: string) => setExcluded((ex) => (ex.includes(cid) ? ex.filter((x) => x !== cid) : [...ex, cid])), []);
 
@@ -183,6 +217,7 @@ export function CampaignNewPage() {
     const label = (m?: VariableMapping) => {
       if (!m) return '';
       if (m.source === 'fixo') return m.value ?? '';
+      if (m.source === 'csv') return m.field ? `[${m.field}]` : '';
       const f = catalog?.variableSources.find((s) => s.source === m.source)?.fields.find((x) => x.field === m.field);
       return f ? `[${f.label}]` : '';
     };
@@ -338,12 +373,50 @@ export function CampaignNewPage() {
 
       {step === 1 && (
         <div className="space-y-6">
-          <Card className="p-6">
-            <h3 className="mb-4 font-bold">Filtros do IXC</h3>
-            <FilterBuilder catalog={catalog} filters={filters} onChange={setFilters} />
-          </Card>
+          <div className="inline-flex rounded-xl bg-ink-900/70 p-1 ring-1 ring-white/10">
+            {(
+              [
+                ['ixc', 'Filtros do IXC + mapa'],
+                ['csv', 'Lista em planilha (CSV)'],
+              ] as const
+            ).map(([v, l]) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => {
+                  setSource(v);
+                  setExcluded([]);
+                  setAudience(null);
+                }}
+                className={clsx('rounded-lg px-4 py-2 text-sm font-semibold transition', source === v ? 'bg-brand text-white shadow-glow' : 'text-ink-300 hover:text-white')}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
 
-          <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
+          {source === 'csv' ? (
+            <Card className="p-6">
+              <h3 className="mb-4 font-bold">Planilha com os clientes</h3>
+              <CsvUploader
+                value={csv}
+                onChange={(c) => {
+                  setCsv(c);
+                  setExcluded([]);
+                  if (!c) setAudience(null);
+                }}
+              />
+            </Card>
+          ) : (
+            <Card className="p-6">
+              <h3 className="mb-4 font-bold">Filtros do IXC</h3>
+              <FilterBuilder catalog={catalog} filters={filters} onChange={setFilters} />
+            </Card>
+          )}
+
+          <div className={clsx("grid gap-6", source === "ixc" ? "xl:grid-cols-[1fr_360px]" : "xl:grid-cols-[1fr_1fr]")}>
+            {source === "ixc" && (
+              <>
             <Card className="p-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3 px-2">
                 <div className="flex items-center gap-2">
@@ -365,6 +438,8 @@ export function CampaignNewPage() {
               </p>
             </Card>
 
+              </>
+            )}
             <div className="space-y-4">
               <Card className="relative overflow-hidden p-6">
                 <div className="absolute inset-0 bg-brand opacity-[0.12]" />
@@ -375,14 +450,22 @@ export function CampaignNewPage() {
                 </div>
                 {audience && (
                   <div className="relative mt-5 grid grid-cols-2 gap-2 text-xs">
-                    {[
-                      ['Encontrados no IXC', audience.stats.matched],
-                      ['Com coordenadas', audience.stats.withCoords],
-                      ['Dentro da área', audience.stats.inArea],
-                      ['Sem telefone válido', audience.stats.withoutPhone],
-                      ['Telefones repetidos', audience.stats.duplicates],
-                      ['Removidos à mão', audience.stats.excluded],
-                    ].map(([l, v]) => (
+                    {(source === 'csv'
+                      ? [
+                          ['Linhas na planilha', audience.stats.matched],
+                          ['Sem telefone válido', audience.stats.withoutPhone],
+                          ['Telefones repetidos', audience.stats.duplicates],
+                          ['Removidos à mão', audience.stats.excluded],
+                        ]
+                      : [
+                          ['Encontrados no IXC', audience.stats.matched],
+                          ['Com coordenadas', audience.stats.withCoords],
+                          ['Dentro da área', audience.stats.inArea],
+                          ['Sem telefone válido', audience.stats.withoutPhone],
+                          ['Telefones repetidos', audience.stats.duplicates],
+                          ['Removidos à mão', audience.stats.excluded],
+                        ]
+                    ).map(([l, v]) => (
                       <div key={l as string} className="rounded-xl bg-black/20 px-3 py-2">
                         <div className="text-ink-400">{l}</div>
                         <div className="text-base font-bold">{fmtNumber(v as number)}</div>
@@ -391,7 +474,7 @@ export function CampaignNewPage() {
                   </div>
                 )}
                 <Button variant="outline" size="sm" className="relative mt-4 w-full" loading={loadingAudience} onClick={() => loadAudience(true)} icon={<RefreshCw className="h-3.5 w-3.5" />}>
-                  Buscar novamente no IXC
+                  {source === 'csv' ? 'Conferir novamente' : 'Buscar novamente no IXC'}
                 </Button>
               </Card>
               {audienceError && (
@@ -455,19 +538,24 @@ export function CampaignNewPage() {
             <Card className="space-y-5 p-6">
               <div>
                 <h3 className="font-bold">Variáveis</h3>
-                <p className="mt-1 text-sm text-ink-300">Cada variável é preenchida com dados do cliente no IXC no momento do envio.</p>
+                <p className="mt-1 text-sm text-ink-300">
+                  {source === 'csv'
+                    ? 'Cada variável é preenchida com uma coluna da planilha (ou com dados do IXC, se a planilha tiver o código do cliente).'
+                    : 'Cada variável é preenchida com dados do cliente no IXC no momento do envio.'}
+                </p>
               </div>
               {info.bodyVars === 0 && !info.dynamicUrlButtons.length && <p className="text-sm text-ink-400">Este modelo não tem variáveis. Pode seguir! ✨</p>}
               {Array.from({ length: info.bodyVars }, (_, i) => String(i + 1)).map((k) => (
                 <div key={k} className="grid gap-3 sm:grid-cols-[60px_1fr] sm:items-start">
                   <span className="pt-2.5 font-mono text-sm font-bold text-fuchsia-300">{`{{${k}}}`}</span>
-                  <MappingEditor catalog={catalog} value={variables.body[k]} onChange={(m) => setVariables((v) => ({ ...v, body: { ...v.body, [k]: m } }))} />
+                  <MappingEditor csv={source === "csv" ? csv : null} catalog={catalog} value={variables.body[k]} onChange={(m) => setVariables((v) => ({ ...v, body: { ...v.body, [k]: m } }))} />
                 </div>
               ))}
               {info.dynamicUrlButtons.map((idx) => (
                 <div key={idx} className="grid gap-3 sm:grid-cols-[60px_1fr] sm:items-start">
                   <span className="pt-2.5 text-xs font-bold text-fuchsia-300">Link {idx + 1}</span>
                   <MappingEditor
+                    csv={source === 'csv' ? csv : null}
                     catalog={catalog}
                     value={variables.buttons?.[String(idx)]}
                     onChange={(m) => setVariables((v) => ({ ...v, buttons: { ...(v.buttons ?? {}), [String(idx)]: m } }))}
