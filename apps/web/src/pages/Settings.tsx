@@ -112,6 +112,12 @@ export function SettingsPage() {
           <Field label="DDD padrão" hint="Usado quando o telefone foi cadastrado sem DDD">
             <input className="input" maxLength={2} value={s.ixc.defaultDdd ?? ''} onChange={(e) => set('ixc', 'defaultDdd', e.target.value.replace(/\D/g, ''))} />
           </Field>
+          <Field label="Coordenadas usadas no mapa" hint="O contrato guarda o endereço de instalação; sem coordenadas nele, usa as do cliente">
+            <select className="input" value={s.ixc.coordSource ?? 'cliente'} onChange={(e) => set('ixc', 'coordSource', e.target.value)}>
+              <option value="cliente">Cadastro do cliente</option>
+              <option value="contrato">Endereço de instalação (contrato)</option>
+            </select>
+          </Field>
           <Toggle checked={s.ixc.ignoreSsl} onChange={(v) => set('ixc', 'ignoreSsl', v)} label="Aceitar certificado SSL próprio (autoassinado)" />
         </Section>
 

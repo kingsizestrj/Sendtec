@@ -6,10 +6,10 @@ Disparo de modelos do WhatsApp (API oficial da Meta) para clientes do **IXC Prov
 
 ## O que ele faz
 
-- **Público a partir do IXC**: filtros sobre qualquer campo de `cliente`, `cliente_contrato` e `fn_areceber` (atalhos prontos como "Clientes ativos", "Internet bloqueada" e "Fatura vencida há +5 dias"). As datas podem ser relativas, como `@hoje-5`.
-- **Seleção no mapa**: polígonos, retângulos e círculos sobre as coordenadas do cadastro. Também dá para clicar num cliente e removê-lo da campanha.
+- **Público a partir do IXC**: filtros sobre qualquer campo de `cliente`, `cliente_contrato` e `fn_areceber`, com todos os operadores do `grid_param` (`=`, `!=`, `>`, `<`, `L`, `NL`, `IN`, `NI`, `BE`, `NBE`). Há atalhos prontos como "Internet bloqueada", "Fatura vencida há +5 dias" e "2+ parcelas em atraso". As datas podem ser relativas (`@hoje-5`) e são enviadas no formato `dd/mm/aaaa` que o IXC espera.
+- **Seleção no mapa**: polígonos, retângulos e círculos sobre as coordenadas do cadastro do cliente ou do endereço de instalação do contrato (configurável). Também dá para clicar num cliente e removê-lo da campanha.
 - **Modelos da Meta**: criação de modelos de marketing e de utilidade com imagem, texto, rodapé e botões. A tela mostra uma prévia estilo WhatsApp, e o sistema acompanha a aprovação automaticamente.
-- **Variáveis preenchidas pelo IXC**: primeiro nome, plano, valor e vencimento da fatura, linha digitável, ou um texto fixo.
+- **Variáveis preenchidas pelo IXC**: primeiro nome, plano, valor em aberto e vencimento da fatura, **PIX copia e cola** (`get_pix`), linha digitável, link de pagamento, ou um texto fixo. A fatura considerada é a mais antiga em aberto, com `liberado = S` e status diferente de recebido ou cancelado.
 - **Disparo via Chatwoot**: cada cliente ganha uma conversa nova com a etiqueta da campanha. A velocidade é configurável, e dá para pausar, retomar, cancelar e reenviar as falhas.
 - **Agendamento** com data e hora.
 - **Relatórios**: enviadas, entregues, lidas e falhas por campanha, com mapa colorido por status e exportação em CSV.

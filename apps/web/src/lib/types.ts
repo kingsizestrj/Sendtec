@@ -17,7 +17,7 @@ export interface Template {
 }
 
 export type Area = { type: 'Polygon'; coordinates: number[][][] } | { type: 'Circle'; center: [number, number]; radius: number };
-export interface AudienceFilter { table: string; field: string; op: string; value: string }
+export interface AudienceFilter { table: string; field: string; op: string; value: string; value2?: string }
 export interface AudienceSpec { filters: AudienceFilter[]; areas: Area[]; excludedClientIds: string[] }
 export interface AudienceClient { id: string; name: string; phone: string | null; lat: number | null; lng: number | null; bairro: string; cidade: string; inArea: boolean }
 export interface AudienceResult {

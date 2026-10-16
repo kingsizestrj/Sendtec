@@ -32,7 +32,7 @@ function MappingEditor({ catalog, value, onChange }: { catalog: Catalog; value?:
           const v = e.target.value;
           if (v === 'fixo') return onChange({ source: 'fixo', value: value?.value ?? '' });
           const [source, field] = v.split('.');
-          const format = field === 'valor' ? 'money' : field.startsWith('data_') ? 'date' : field === 'primeiro_nome' || field === 'razao' ? 'title' : 'none';
+          const format = field === 'valor' || field === 'valor_aberto' ? 'money' : field.startsWith('data_') ? 'date' : field === 'primeiro_nome' || field === 'razao' ? 'title' : 'none';
           onChange({ source: source as VariableMapping['source'], field, format, fallback: value?.fallback });
         }}
       >

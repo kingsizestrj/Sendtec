@@ -9,6 +9,7 @@ export interface IxcGridParam {
   TB: string; // tabela.campo
   OP: string; // =, !=, >, <, >=, <=, L
   P: string;
+  P2?: string; // segundo valor dos operadores BE / NBE (entre)
 }
 
 export interface IxcListResponse<T> {
@@ -29,7 +30,7 @@ export class IxcClient {
 
   constructor(private settings: SettingsService) {}
 
-  private http(cfg: IxcSettings): AxiosInstance {
+  private http(cfg: IxcSettings, listar = true): AxiosInstance {
     if (!cfg.baseUrl || !cfg.token) throw new BadRequestException('Configure a URL e o token do IXC em Configurações');
     return axios.create({
       baseURL: cfg.baseUrl.replace(/\/+$/, '') + '/webservice/v1/',
@@ -37,7 +38,7 @@ export class IxcClient {
       headers: {
         Authorization: 'Basic ' + Buffer.from(cfg.token).toString('base64'),
         'Content-Type': 'application/json',
-        ixcsoft: 'listar',
+        ...(listar ? { ixcsoft: 'listar' } : {}),
       },
       httpsAgent: new https.Agent({ rejectUnauthorized: !cfg.ignoreSsl }),
     });
@@ -77,6 +78,17 @@ export class IxcClient {
       if (rows.length < PAGE_SIZE || out.length >= Number(res.total)) break;
     }
     return out;
+  }
+
+  /** Rotas de ação (sem "ixcsoft: listar"), ex.: get_pix. */
+  async action<T = any>(endpoint: string, body: Record<string, unknown>): Promise<T> {
+    const cfg = await this.settings.get('ixc');
+    try {
+      const { data } = await this.http(cfg, false).post<T>(endpoint, body);
+      return data;
+    } catch (e: any) {
+      throw new BadGatewayException(`Não foi possível consultar o IXC (${endpoint}): ${e.response?.status ?? e.message}`);
+    }
   }
 
   async test(cfg: IxcSettings) {

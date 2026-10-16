@@ -40,4 +40,11 @@ export function resolveDynamicValue(value: string, now = new Date()): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** O IXC espera datas dos filtros em dd/mm/aaaa: converte "2026-10-16" (inclusive vindo de @hoje). */
+export function toIxcValue(value: string): string {
+  const v = resolveDynamicValue(value);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : v;
+}
+
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

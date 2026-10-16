@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeBrPhone } from '../src/common/phone';
-import { formatDate, formatMoney, normalizeKeyword, resolveDynamicValue, firstName } from '../src/common/text';
+import { formatDate, formatMoney, normalizeKeyword, resolveDynamicValue, firstName, toIxcValue } from '../src/common/text';
 import { insideAnyArea, parseCoord } from '../src/common/geo';
 import { componentsInfo, countVars, renderText } from '../src/templates/template-utils';
 
@@ -53,4 +53,12 @@ test('leitura de modelos', () => {
   assert.equal(info.headerFormat, 'IMAGE');
   assert.equal(info.bodyVars, 2);
   assert.deepEqual(info.dynamicUrlButtons, [1]);
+});
+
+test('valores de filtro no formato do IXC', () => {
+  assert.equal(toIxcValue('2026-10-16'), '16/10/2026');
+  assert.match(toIxcValue('@hoje-5'), /^\d{2}\/\d{2}\/\d{4}$/);
+  assert.equal(toIxcValue('S'), 'S');
+  assert.equal(toIxcValue('CM,CA'), 'CM,CA');
+  assert.equal(toIxcValue('2024-03-14 10:00:00'), '2024-03-14 10:00:00'); // data e hora fica como está
 });

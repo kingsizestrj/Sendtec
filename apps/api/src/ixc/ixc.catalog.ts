@@ -76,6 +76,8 @@ export const IXC_TABLES: TableDef[] = [
       },
       { field: 'id_vd_contrato', label: 'Plano', type: 'enum', lookup: 'plano' },
       { field: 'contrato', label: 'Nome do plano', type: 'text' },
+      { field: 'num_parcelas_atraso', label: 'Parcelas em atraso', type: 'number' },
+      { field: 'pago_ate_data', label: 'Pago até', type: 'date' },
       { field: 'data_ativacao', label: 'Data de ativação', type: 'date' },
       { field: 'data_expiracao', label: 'Data de expiração', type: 'date' },
       { field: 'data_cancelamento', label: 'Data de cancelamento', type: 'date' },
@@ -86,7 +88,7 @@ export const IXC_TABLES: TableDef[] = [
   },
   {
     table: 'fn_areceber',
-    label: 'Financeiro (a receber)',
+    label: 'Financeiro',
     clientKey: 'id_cliente',
     fields: [
       {
@@ -101,13 +103,16 @@ export const IXC_TABLES: TableDef[] = [
         ],
       },
       { field: 'data_vencimento', label: 'Data de vencimento', type: 'date' },
+      { field: 'liberado', label: 'Título liberado', type: 'enum', options: simNao },
       { field: 'valor', label: 'Valor', type: 'number' },
+      { field: 'valor_aberto', label: 'Valor em aberto', type: 'number' },
       { field: 'data_emissao', label: 'Data de emissão', type: 'date' },
       { field: 'id_contrato', label: 'ID do contrato', type: 'number' },
     ],
   },
 ];
 
+/** Operadores aceitos pelo grid_param do IXC. */
 export const OPERATORS = [
   { value: '=', label: 'é igual a' },
   { value: '!=', label: 'é diferente de' },
@@ -116,6 +121,11 @@ export const OPERATORS = [
   { value: '<', label: 'menor que' },
   { value: '<=', label: 'menor ou igual a' },
   { value: 'L', label: 'contém' },
+  { value: 'NL', label: 'não contém' },
+  { value: 'IN', label: 'é um destes' },
+  { value: 'NI', label: 'não é nenhum destes' },
+  { value: 'BE', label: 'entre' },
+  { value: 'NBE', label: 'fora do intervalo' },
 ];
 
 /** Campos disponíveis para preencher variáveis dos modelos. */
@@ -150,9 +160,12 @@ export const VARIABLE_SOURCES = [
     source: 'fatura',
     label: 'Fatura (aberta mais antiga)',
     fields: [
-      { field: 'valor', label: 'Valor' },
+      { field: 'valor_aberto', label: 'Valor em aberto' },
+      { field: 'valor', label: 'Valor original' },
       { field: 'data_vencimento', label: 'Vencimento' },
+      { field: 'pix_copia_cola', label: 'PIX copia e cola' },
       { field: 'linha_digitavel', label: 'Linha digitável' },
+      { field: 'gateway_link', label: 'Link de pagamento' },
       { field: 'id', label: 'Número da fatura' },
     ],
   },

@@ -4,13 +4,14 @@ import { IXC_TABLES } from './ixc.catalog';
 import { SettingsService } from '../settings/settings.service';
 import { Area, insideAnyArea, parseCoord } from '../common/geo';
 import { normalizeBrPhone } from '../common/phone';
-import { resolveDynamicValue } from '../common/text';
+import { toIxcValue } from '../common/text';
 
 export interface AudienceFilter {
   table: string;
   field: string;
   op: string;
   value: string;
+  value2?: string; // fim do intervalo (BE / NBE)
 }
 
 export interface AudienceSpec {
@@ -37,7 +38,7 @@ export interface AudienceResult {
   stats: { matched: number; withCoords: number; inArea: number; withoutPhone: number; duplicates: number; excluded: number; selected: number };
 }
 
-const VALID_OPS = new Set(['=', '!=', '>', '<', '>=', '<=', 'L']);
+const VALID_OPS = new Set(['=', '!=', '>', '<', '>=', '<=', 'L', 'NL', 'IN', 'NI', 'BE', 'NBE']);
 const CACHE_MS = 5 * 60 * 1000;
 
 @Injectable()
@@ -58,7 +59,10 @@ export class AudienceService {
     return filters.map((f) => {
       if (!VALID_OPS.has(f.op)) throw new BadRequestException(`Operador inválido: ${f.op}`);
       if (!/^[a-z0-9_]+$/i.test(f.field)) throw new BadRequestException(`Campo inválido: ${f.field}`);
-      return { TB: `${table}.${f.field}`, OP: f.op, P: resolveDynamicValue(String(f.value ?? '')) };
+      const grid: IxcGridParam = { TB: `${table}.${f.field}`, OP: f.op, P: toIxcValue(String(f.value ?? '')) };
+      if (f.op === 'BE' || f.op === 'NBE') grid.P2 = toIxcValue(String(f.value2 ?? ''));
+      if (f.op === 'IN' || f.op === 'NI') grid.P = grid.P.split(',').map((x) => x.trim()).filter(Boolean).join(',');
+      return grid;
     });
   }
 
@@ -97,13 +101,16 @@ export class AudienceService {
     const areas = spec.areas ?? [];
     const excluded = new Set((spec.excludedClientIds ?? []).map(String));
 
+    const contractCoords = ixcCfg.coordSource === 'contrato' ? await this.contractCoords(opts.refresh) : null;
+
     const raw = new Map<string, IxcRecord>();
     const list: AudienceClient[] = [];
     for (const c of clients) {
       if (allowed && !allowed.has(String(c.id))) continue;
       raw.set(String(c.id), c);
-      const lat = parseCoord(c.latitude);
-      const lng = parseCoord(c.longitude);
+      const fromContract = contractCoords?.get(String(c.id));
+      const lat = fromContract ? fromContract[0] : parseCoord(c.latitude);
+      const lng = fromContract ? fromContract[1] : parseCoord(c.longitude);
       let phone: string | null = null;
       for (const f of phoneFields) {
         phone = normalizeBrPhone(c[f], ixcCfg.defaultDdd || undefined);
@@ -158,6 +165,19 @@ export class AudienceService {
         selected: selected.length,
       },
     };
+  }
+
+  /** Coordenadas do endereço de instalação (primeiro contrato ativo com coordenadas, senão qualquer um). */
+  private async contractCoords(refresh?: boolean): Promise<Map<string, [number, number]>> {
+    const rows = await this.cached('contratos:coords', () => this.ixc.all('cliente_contrato'), refresh);
+    const out = new Map<string, [number, number]>();
+    const ranked = [...rows].sort((a, b) => Number(b.status === 'A') - Number(a.status === 'A'));
+    for (const r of ranked) {
+      const lat = parseCoord(r.latitude);
+      const lng = parseCoord(r.longitude);
+      if (lat !== null && lng !== null && !out.has(String(r.id_cliente))) out.set(String(r.id_cliente), [lat, lng]);
+    }
+    return out;
   }
 
   /** Opções para campos com lookup (cidade, filial, plano, tipo de cliente). */

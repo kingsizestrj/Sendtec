@@ -30,6 +30,10 @@ export class VariablesService {
     return [...Object.values(cfg.body ?? {}), ...Object.values(cfg.buttons ?? {})].some((m) => m.source === source);
   }
 
+  private needsField(cfg: VariablesConfig, source: VariableMapping['source'], field: string) {
+    return [...Object.values(cfg.body ?? {}), ...Object.values(cfg.buttons ?? {})].some((m) => m.source === source && m.field === field);
+  }
+
   async resolve(cfg: VariablesConfig, client: IxcRecord): Promise<ResolvedParams> {
     const ctx: Record<string, IxcRecord | null> = { cliente: { ...client }, contrato: null, fatura: null };
 
@@ -43,11 +47,18 @@ export class VariablesService {
       ctx.contrato = rows.find((r) => r.status === 'A') ?? rows[0] ?? null;
     }
     if (this.needs(cfg, 'fatura')) {
+      // títulos em aberto, como na documentação do IXC: liberados e não recebidos/cancelados (inclui parciais)
       const rows = await this.ixc.all('fn_areceber', [
         { TB: 'fn_areceber.id_cliente', OP: '=', P: String(client.id) },
-        { TB: 'fn_areceber.status', OP: '=', P: 'A' },
+        { TB: 'fn_areceber.liberado', OP: '=', P: 'S' },
+        { TB: 'fn_areceber.status', OP: '!=', P: 'C' },
+        { TB: 'fn_areceber.status', OP: '!=', P: 'R' },
       ]);
       ctx.fatura = rows.sort((a, b) => (a.data_vencimento || '').localeCompare(b.data_vencimento || ''))[0] ?? null;
+      if (ctx.fatura && this.needsField(cfg, 'fatura', 'pix_copia_cola')) {
+        const res = await this.ixc.action('get_pix', { id_areceber: ctx.fatura.id }).catch(() => null);
+        ctx.fatura = { ...ctx.fatura, pix_copia_cola: res?.pix?.qrCode?.qrcode ?? '' };
+      }
     }
 
     const value = (m: VariableMapping): string => {

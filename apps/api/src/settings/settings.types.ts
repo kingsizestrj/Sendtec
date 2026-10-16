@@ -4,6 +4,7 @@ export interface IxcSettings {
   ignoreSsl: boolean;
   phoneFields: string[]; // ordem de preferência dos campos de telefone
   defaultDdd?: string;
+  coordSource: 'cliente' | 'contrato'; // contrato = endereço de instalação (cai no do cliente se vazio)
 }
 
 export interface ChatwootSettings {
@@ -40,7 +41,7 @@ export interface AllSettings {
 }
 
 export const DEFAULT_SETTINGS: AllSettings = {
-  ixc: { baseUrl: '', token: '', ignoreSsl: true, phoneFields: ['whatsapp', 'telefone_celular', 'fone'], defaultDdd: '' },
+  ixc: { baseUrl: '', token: '', ignoreSsl: true, phoneFields: ['whatsapp', 'telefone_celular', 'fone'], defaultDdd: '', coordSource: 'cliente' },
   chatwoot: { baseUrl: '', apiToken: '', accountId: 1, inboxId: 0, webhookToken: '', legacyParams: false, labelPrefix: 'campanha' },
   meta: { wabaId: '', appId: '', accessToken: '', graphVersion: 'v21.0' },
   general: {
