@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body, #root { height: 100%; }
+body {
+  @apply bg-ink-950 text-white font-sans antialiased;
+  background-image:
+    radial-gradient(900px 500px at 10% -10%, rgba(124, 58, 237, 0.22), transparent 60%),
+    radial-gradient(700px 400px at 100% 0%, rgba(219, 39, 119, 0.16), transparent 60%),
+    radial-gradient(600px 400px at 50% 110%, rgba(249, 115, 22, 0.1), transparent 60%);
+  background-attachment: fixed;
+}
+
+@layer components {
+  .glass { @apply bg-white/[0.035] border border-white/[0.07] backdrop-blur-xl shadow-card; }
+  .input {
+    @apply w-full rounded-xl bg-ink-900/70 border border-white/10 px-3.5 py-2.5 text-sm text-white placeholder:text-ink-400
+      outline-none transition focus:border-fuchsia-500/60 focus:ring-4 focus:ring-fuchsia-500/10;
+  }
+  .label { @apply mb-1.5 block text-xs font-semibold uppercase tracking-wider text-ink-300; }
+  .text-gradient { @apply bg-brand bg-clip-text text-transparent; }
+}
+
+/* Leaflet no tema escuro */
+.leaflet-container { background: #0d0b18; font-family: inherit; border-radius: 1rem; }
+.dark-tiles { filter: invert(1) hue-rotate(200deg) brightness(0.85) contrast(0.9) saturate(0.6); }
+.leaflet-bar a, .leaflet-pm-toolbar .button-container a { background-color: #15122a !important; border-color: #2c2752 !important; }
+.leaflet-pm-toolbar .leaflet-buttons-control-button .control-icon { filter: invert(1); }
+.leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #15122a; color: #fff; border: 1px solid rgba(255,255,255,.08); }
+.leaflet-control-attribution { background: rgba(13,11,24,.7) !important; color: #8b86b3 !important; }
+.leaflet-control-attribution a { color: #b4b0d4 !important; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2c2752; border-radius: 10px; border: 2px solid #0d0b18; }
+::-webkit-scrollbar-track { background: transparent; }

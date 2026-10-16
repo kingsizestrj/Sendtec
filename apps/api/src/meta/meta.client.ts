@@ -25,7 +25,7 @@ export class MetaClient {
   }
 
   private url(cfg: MetaSettings, path: string) {
-    return `https://graph.facebook.com/${cfg.graphVersion || 'v21.0'}/${path}`;
+    return `${process.env.META_GRAPH_URL || 'https://graph.facebook.com'}/${cfg.graphVersion || 'v21.0'}/${path}`;
   }
 
   private fail(e: unknown): never {

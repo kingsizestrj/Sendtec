@@ -107,6 +107,9 @@ export class CampaignRunner {
       headerUrl = await this.media.publicUrl(campaign.template.headerMediaId);
     }
     if (info.headerFormat === 'IMAGE' && !headerUrl) throw new Error('O modelo tem imagem no cabeçalho: informe a imagem da campanha');
+    if (info.headerFormat === 'IMAGE' && !/^https?:\/\//.test(headerUrl!)) {
+      throw new Error('Configure a "URL pública do Sendtec" em Configurações: a Meta precisa baixar a imagem do cabeçalho por ela');
+    }
 
     for (;;) {
       const current = await this.prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } });
