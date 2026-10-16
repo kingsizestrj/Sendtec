@@ -22,6 +22,8 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://sendtec:${DB_PASSWORD:-sendtec}@db:5432/sendtec
+      # dentro do container a aplicação sempre ouve na 3000; PORT do .env só define a porta do servidor
+      PORT: "3000"
     ports:
       - "${PORT:-3000}:3000"
     volumes:
