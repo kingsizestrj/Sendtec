@@ -1,0 +1,56 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { normalizeBrPhone } from '../src/common/phone';
+import { formatDate, formatMoney, normalizeKeyword, resolveDynamicValue, firstName } from '../src/common/text';
+import { insideAnyArea, parseCoord } from '../src/common/geo';
+import { componentsInfo, countVars, renderText } from '../src/templates/template-utils';
+
+test('normaliza telefones brasileiros', () => {
+  assert.equal(normalizeBrPhone('(11) 98765-4321'), '+5511987654321');
+  assert.equal(normalizeBrPhone('5511987654321'), '+5511987654321');
+  assert.equal(normalizeBrPhone('+55 (61) 9 9999-0000'), '+5561999990000');
+  assert.equal(normalizeBrPhone('6188887777'), '+5561988887777'); // adiciona nono dígito
+  assert.equal(normalizeBrPhone('6133334444'), '+556133334444'); // fixo continua igual
+  assert.equal(normalizeBrPhone('98765-4321', '61'), '+5561987654321');
+  assert.equal(normalizeBrPhone('0 15 61 98765-4321'), '+5561987654321'); // com operadora
+  assert.equal(normalizeBrPhone(''), null);
+  assert.equal(normalizeBrPhone('123'), null);
+  assert.equal(normalizeBrPhone('0000000000'), null);
+});
+
+test('formatações', () => {
+  assert.equal(formatDate('2026-10-16'), '16/10/2026');
+  assert.equal(formatMoney('99.9').replace(/\s/g, ' '), 'R$ 99,90');
+  assert.equal(normalizeKeyword('  Sair! '), 'SAIR');
+  assert.equal(normalizeKeyword('não'), 'NAO');
+  assert.equal(firstName('MARIA DA SILVA'), 'Maria');
+  assert.equal(resolveDynamicValue('@hoje-5', new Date(2026, 9, 16)), '2026-10-11');
+  assert.equal(resolveDynamicValue('@hoje', new Date(2026, 0, 1)), '2026-01-01');
+  assert.equal(resolveDynamicValue('S'), 'S');
+});
+
+test('seleção por área no mapa', () => {
+  assert.equal(parseCoord('-15,7801'), -15.7801);
+  assert.equal(parseCoord(''), null);
+  assert.equal(parseCoord('0'), null);
+  const square = { type: 'Polygon' as const, coordinates: [[[-48, -16], [-47, -16], [-47, -15], [-48, -15], [-48, -16]]] };
+  assert.equal(insideAnyArea(-15.5, -47.5, [square]), true);
+  assert.equal(insideAnyArea(-14.5, -47.5, [square]), false);
+  const circle = { type: 'Circle' as const, center: [-47.9, -15.8] as [number, number], radius: 1000 };
+  assert.equal(insideAnyArea(-15.805, -47.9, [circle]), true); // ~550 m
+  assert.equal(insideAnyArea(-15.82, -47.9, [circle]), false); // ~2,2 km
+  assert.equal(insideAnyArea(-14.5, -47.5, [square, { ...circle, center: [-47.5, -14.5] }]), true);
+});
+
+test('leitura de modelos', () => {
+  assert.equal(countVars('Olá {{1}}, sua fatura de {{2}} vence {{3}}.'), 3);
+  assert.equal(renderText('Olá {{1}}!', { '1': 'Ana' }), 'Olá Ana!');
+  const info = componentsInfo([
+    { type: 'HEADER', format: 'IMAGE' },
+    { type: 'BODY', text: 'Oi {{1}}, veja {{2}}.' },
+    { type: 'BUTTONS', buttons: [{ type: 'QUICK_REPLY', text: 'Sair' }, { type: 'URL', text: 'Ver', url: 'https://x.com/{{1}}' }] },
+  ]);
+  assert.equal(info.headerFormat, 'IMAGE');
+  assert.equal(info.bodyVars, 2);
+  assert.deepEqual(info.dynamicUrlButtons, [1]);
+});

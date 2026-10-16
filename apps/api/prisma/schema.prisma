@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+}
+
+model User {
+  id           String     @id @default(uuid())
+  name         String
+  email        String     @unique
+  passwordHash String
+  role         Role       @default(OPERATOR)
+  active       Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  campaigns    Campaign[]
+}
+
+// Configurações (IXC, Chatwoot, Meta). O valor é JSON criptografado com APP_SECRET.
+model Setting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Media {
+  id        String   @id @default(uuid())
+  filename  String
+  mimeType  String
+  size      Int
+  path      String
+  createdAt DateTime @default(now())
+}
+
+model Template {
+  id             String     @id @default(uuid())
+  metaId         String?    @unique
+  name           String
+  language       String
+  category       String
+  status         String     @default("PENDING")
+  rejectedReason String?
+  qualityScore   String?
+  components     Json
+  headerMediaId  String?
+  lastSyncedAt   DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  campaigns      Campaign[]
+
+  @@unique([name, language])
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  CANCELLED
+  FAILED
+}
+
+model Campaign {
+  id            String              @id @default(uuid())
+  name          String
+  status        CampaignStatus      @default(DRAFT)
+  templateId    String
+  template      Template            @relation(fields: [templateId], references: [id])
+  // { filters: [...], areas: [...], excludedClientIds: [...], phoneFields: [...] }
+  audience      Json
+  // { body: { "1": { source, field, ... } }, buttons: [...] }
+  variables     Json
+  headerMediaUrl String?
+  respectOptOut Boolean             @default(true)
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  finishedAt    DateTime?
+  error         String?
+  createdById   String
+  createdBy     User                @relation(fields: [createdById], references: [id])
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  recipients    CampaignRecipient[]
+}
+
+enum RecipientStatus {
+  PENDING
+  SENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  SKIPPED
+}
+
+model CampaignRecipient {
+  id                     String          @id @default(uuid())
+  campaignId             String
+  campaign               Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  ixcClientId            String
+  name                   String
+  phone                  String
+  latitude               Float?
+  longitude              Float?
+  status                 RecipientStatus @default(PENDING)
+  error                  String?
+  clientData             Json?
+  params                 Json?
+  chatwootContactId      Int?
+  chatwootConversationId Int?
+  chatwootMessageId      Int?
+  sentAt                 DateTime?
+  deliveredAt            DateTime?
+  readAt                 DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+
+  @@unique([campaignId, phone])
+  @@index([chatwootMessageId])
+  @@index([campaignId, status])
+}
+
+model OptOut {
+  phone     String   @id
+  name      String?
+  reason    String?
+  source    String   @default("manual")
+  createdAt DateTime @default(now())
+}
