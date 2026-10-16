@@ -1,4 +1,5 @@
 import { Body, Controller, ForbiddenException, HttpCode, Logger, Post, Query } from '@nestjs/common';
+import { timingSafeEqual } from 'crypto';
 import { Public } from '../auth/decorators';
 import { PrismaService } from '../prisma.service';
 import { SettingsService } from '../settings/settings.service';
@@ -11,6 +12,12 @@ import { normalizeKeyword } from '../common/text';
  * Webhook do Chatwoot (Configurações > Integrações > Webhooks no Chatwoot).
  * Eventos usados: message_created (opt-out) e message_updated (status de entrega/leitura).
  */
+function safeEqual(a: string, b: string) {
+  const x = Buffer.from(String(a));
+  const y = Buffer.from(String(b));
+  return x.length === y.length && timingSafeEqual(x, y);
+}
+
 @Controller('webhooks')
 export class WebhooksController {
   private readonly logger = new Logger(WebhooksController.name);
@@ -27,7 +34,7 @@ export class WebhooksController {
   @HttpCode(200)
   async chatwootHook(@Query('token') token: string, @Body() body: any) {
     const cfg = await this.settings.get('chatwoot');
-    if (!token || token !== cfg.webhookToken) {
+    if (!token || !safeEqual(token, cfg.webhookToken)) {
       this.logger.warn('Webhook do Chatwoot recusado: token inválido (confira a URL cadastrada no Chatwoot)');
       throw new ForbiddenException();
     }

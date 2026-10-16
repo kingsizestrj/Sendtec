@@ -17,6 +17,13 @@ export class MediaService {
     if (!file) throw new BadRequestException('Arquivo não enviado');
     if (!ALLOWED.includes(file.mimetype)) throw new BadRequestException('Use imagens JPG ou PNG');
     if (file.size > MAX_BYTES) throw new BadRequestException('A imagem deve ter no máximo 5 MB');
+    // confere o conteúdo real do arquivo, não só o tipo informado pelo navegador
+    const b = file.buffer;
+    const isPng = b.length > 8 && b.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    const isJpeg = b.length > 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff;
+    if ((file.mimetype === 'image/png' && !isPng) || (file.mimetype === 'image/jpeg' && !isJpeg)) {
+      throw new BadRequestException('O arquivo não é uma imagem JPG ou PNG válida');
+    }
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
     const id = randomUUID();
     const ext = file.mimetype === 'image/png' ? 'png' : 'jpg';

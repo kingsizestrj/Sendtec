@@ -62,3 +62,17 @@ test('valores de filtro no formato do IXC', () => {
   assert.equal(toIxcValue('CM,CA'), 'CM,CA');
   assert.equal(toIxcValue('2024-03-14 10:00:00'), '2024-03-14 10:00:00'); // data e hora fica como está
 });
+
+test('bloqueio de tentativas de login', async () => {
+  const { assertNotLocked, registerFailure, registerSuccess } = await import('../src/auth/login-limiter');
+  const t0 = 1_000_000;
+  for (let i = 0; i < 7; i++) registerFailure('a@x.com', '1.1.1.1', t0);
+  assert.doesNotThrow(() => assertNotLocked('a@x.com', '1.1.1.1', t0));
+  registerFailure('a@x.com', '1.1.1.1', t0);
+  assert.throws(() => assertNotLocked('a@x.com', '1.1.1.1', t0), /Muitas tentativas/);
+  assert.doesNotThrow(() => assertNotLocked('outro@x.com', '2.2.2.2', t0)); // outros usuários seguem entrando
+  assert.doesNotThrow(() => assertNotLocked('a@x.com', '1.1.1.1', t0 + 16 * 60 * 1000)); // libera após 15 min
+  registerFailure('b@x.com', '3.3.3.3', t0);
+  registerSuccess('b@x.com');
+  assert.doesNotThrow(() => assertNotLocked('b@x.com', '3.3.3.3', t0));
+});
