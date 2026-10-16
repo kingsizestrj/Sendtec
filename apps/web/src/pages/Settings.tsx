@@ -73,7 +73,7 @@ export function SettingsPage() {
         message = !r.inboxFound
           ? `Conectado, mas a caixa ${s.chatwoot.inboxId} não foi encontrada. Disponíveis: ${r.inboxes.map((i: any) => `${i.id} - ${i.name}`).join(', ')}`
           : r.inboxIsWhatsapp
-            ? 'Conectado! Caixa de entrada do WhatsApp encontrada.'
+            ? `Conectado! Caixa de entrada do WhatsApp encontrada${r.templates !== null ? ` com ${r.templates} modelo(s) sincronizado(s)` : ''}.`
             : 'Conectado, mas a caixa escolhida não é do canal WhatsApp Cloud.';
         if (!r.inboxFound || !r.inboxIsWhatsapp) r.ok = false;
       }

@@ -36,7 +36,14 @@ export class ChatwootClient {
       const { data } = await http.get('inboxes');
       const inboxes = (data.payload ?? []) as any[];
       const inbox = inboxes.find((i) => i.id === Number(cfg.inboxId));
+      let templates: number | null = null;
+      if (inbox) {
+        const detail = await http.get(`inboxes/${inbox.id}`).catch(() => null);
+        const list = detail?.data?.message_templates;
+        templates = Array.isArray(list) ? list.length : null;
+      }
       return {
+        templates,
         ok: true,
         inboxes: inboxes.map((i) => ({ id: i.id, name: i.name, channelType: i.channel_type })),
         inboxFound: !!inbox,
@@ -44,6 +51,32 @@ export class ChatwootClient {
       };
     } catch (e) {
       this.fail(e, 'teste');
+    }
+  }
+
+  /** Pede ao Chatwoot para buscar na Meta a lista atualizada de modelos (botão "Sincronizar modelos"). */
+  async syncTemplates(): Promise<boolean> {
+    const cfg = await this.settings.get('chatwoot');
+    try {
+      await this.http(cfg).post(`inboxes/${cfg.inboxId}/sync_templates`);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Modelos que o Chatwoot já tem sincronizados na caixa do WhatsApp.
+   * Devolve null se a resposta não trouxer a lista (formato desconhecido): nesse caso não dá para verificar.
+   */
+  async inboxTemplates(): Promise<{ name: string; language: string; status?: string }[] | null> {
+    const cfg = await this.settings.get('chatwoot');
+    try {
+      const { data } = await this.http(cfg).get(`inboxes/${cfg.inboxId}`);
+      const list = data?.message_templates ?? data?.payload?.message_templates;
+      return Array.isArray(list) ? list : null;
+    } catch (e) {
+      this.fail(e, 'caixa de entrada');
     }
   }
 

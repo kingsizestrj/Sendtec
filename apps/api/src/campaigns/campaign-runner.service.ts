@@ -94,6 +94,7 @@ export class CampaignRunner {
       where: { id: campaignId },
       data: { status: 'RUNNING', startedAt: campaign.startedAt ?? new Date(), error: null },
     });
+    await this.ensureTemplateInChatwoot(campaign.template);
     await this.materialize(campaign);
 
     const general = await this.settings.get('general');
@@ -134,6 +135,33 @@ export class CampaignRunner {
 
     await this.prisma.campaign.update({ where: { id: campaignId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
     this.logger.log(`Campanha ${campaign.name} concluída`);
+  }
+
+  /**
+   * O Chatwoot só monta a mensagem se o modelo estiver na lista sincronizada da caixa.
+   * Pede a sincronização e aguarda até ~1 min; se o modelo não aparecer, a campanha não começa.
+   */
+  private async ensureTemplateInChatwoot(template: Template) {
+    const has = (list: { name: string; language: string }[]) => list.some((t) => t.name === template.name && t.language === template.language);
+
+    let list = await this.chatwoot.inboxTemplates();
+    if (list === null) {
+      this.logger.warn('Não foi possível ler os modelos da caixa do Chatwoot; seguindo sem verificar');
+      return;
+    }
+    if (has(list)) return;
+
+    this.logger.log(`Modelo ${template.name} ainda não está no Chatwoot; pedindo sincronização`);
+    const synced = await this.chatwoot.syncTemplates();
+    for (let i = 0; synced && i < 12; i++) {
+      await sleep(5000);
+      list = (await this.chatwoot.inboxTemplates()) ?? [];
+      if (has(list)) return;
+    }
+    throw new Error(
+      `O modelo "${template.name}" ainda não está disponível no Chatwoot. ` +
+        'Clique em "Sincronizar modelos" na caixa do WhatsApp no Chatwoot, aguarde ele aparecer e clique em Retomar.',
+    );
   }
 
   private async sendOne(
