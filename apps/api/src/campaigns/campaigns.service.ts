@@ -2,6 +2,8 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma, RecipientStatus } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { CampaignRunner } from './campaign-runner.service';
+import { AudienceService } from '../ixc/audience.service';
+import { normalizeBrPhone } from '../common/phone';
 import { AudienceSpec } from '../ixc/audience.service';
 import { VariablesConfig } from './variables.service';
 import { componentsInfo } from '../templates/template-utils';
@@ -20,7 +22,7 @@ const EDITABLE = ['DRAFT', 'SCHEDULED'];
 
 @Injectable()
 export class CampaignsService {
-  constructor(private prisma: PrismaService, private runner: CampaignRunner) {}
+  constructor(private prisma: PrismaService, private runner: CampaignRunner, private audience: AudienceService) {}
 
   private async counts(campaignIds: string[]) {
     const grouped = await this.prisma.campaignRecipient.groupBy({
@@ -127,6 +129,35 @@ export class CampaignsService {
     await this.prisma.campaign.update({ where: { id }, data: { status: 'RUNNING', scheduledAt: null } });
     this.runner.launch(id);
     return this.get(id);
+  }
+
+  /** Envia a mensagem para um telefone de teste, com os dados reais de um cliente do público. */
+  async sendTest(input: CampaignInput & { clientId: string; phone: string }) {
+    const template = await this.validate(input);
+    if (template.status !== 'APPROVED') throw new BadRequestException(`O modelo ainda não está aprovado pela Meta (${template.status})`);
+    const phone = normalizeBrPhone(input.phone);
+    if (!phone) throw new BadRequestException('Telefone de teste inválido');
+    const audience = await this.audience.resolve(input.audience);
+    const clientData = audience.raw.get(String(input.clientId));
+    if (!clientData) throw new BadRequestException('Cliente não encontrado no público da campanha');
+    try {
+      await this.runner.ensureTemplateInChatwoot(template);
+      const headerUrl = await this.runner.headerUrlFor(template, input.headerMediaUrl);
+      const res = await this.runner.deliver({
+        template,
+        variables: input.variables,
+        clientData,
+        phone,
+        name: `Teste Sendtec (${clientData.razao || clientData.fantasia || 'cliente'})`,
+        ixcId: 'teste',
+        headerUrl,
+        labels: ['sendtec-teste'],
+        attributes: { sendtec_campaign: `TESTE: ${input.name}` },
+      });
+      return { ok: true, phone, text: res.text, conversationId: res.conversationId };
+    } catch (e: any) {
+      throw new BadRequestException(e.message);
+    }
   }
 
   async pause(id: string) {

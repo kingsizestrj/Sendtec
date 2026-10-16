@@ -11,6 +11,11 @@ export class CampaignsController {
     return this.campaigns.list();
   }
 
+  @Post('test')
+  test(@Body() body: CampaignInput & { clientId: string; phone: string }) {
+    return this.campaigns.sendTest(body);
+  }
+
   @Get(':id')
   get(@Param('id') id: string) {
     return this.campaigns.get(id);

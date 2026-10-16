@@ -83,6 +83,22 @@ export class MetaClient {
     }
   }
 
+  /** Números da conta com qualidade e limite de envio definidos pela Meta. */
+  async phoneNumbers(): Promise<
+    { id: string; display_phone_number: string; verified_name: string; quality_rating?: string; messaging_limit_tier?: string; status?: string; name_status?: string }[]
+  > {
+    const cfg = await this.cfg();
+    try {
+      const { data } = await axios.get(this.url(cfg, `${cfg.wabaId}/phone_numbers`), {
+        params: { fields: 'id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,status,name_status' },
+        headers: { Authorization: `Bearer ${cfg.accessToken}` },
+      });
+      return data.data ?? [];
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
   async listTemplates(): Promise<MetaTemplate[]> {
     const cfg = await this.cfg();
     const out: MetaTemplate[] = [];

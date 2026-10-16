@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { Ban, LayoutDashboard, LogOut, Megaphone, Menu, MessageSquareText, Settings, Users, X } from 'lucide-react';
+import { Ban, LayoutDashboard, LogOut, MapPinned, Megaphone, Menu, MessageSquareText, Settings, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
@@ -8,6 +8,7 @@ const NAV = [
   { to: '/', label: 'Visão geral', icon: LayoutDashboard, end: true as boolean | undefined },
   { to: '/campanhas', label: 'Campanhas', icon: Megaphone },
   { to: '/modelos', label: 'Modelos', icon: MessageSquareText },
+  { to: '/resultados', label: 'Resultados', icon: MapPinned },
   { to: '/descadastros', label: 'Descadastros', icon: Ban },
 ];
 const ADMIN_NAV: typeof NAV = [

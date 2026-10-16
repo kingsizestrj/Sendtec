@@ -101,16 +101,8 @@ export class CampaignRunner {
     const cw = await this.settings.get('chatwoot');
     const rate = Math.max(0.2, Number(general.sendRatePerSecond) || 5);
     const interval = 1000 / rate;
-    const info = componentsInfo(campaign.template.components as any[]);
     const label = `${cw.labelPrefix || 'campanha'}-${slug(campaign.name)}`;
-    let headerUrl = campaign.headerMediaUrl;
-    if (!headerUrl && info.headerFormat === 'IMAGE' && campaign.template.headerMediaId) {
-      headerUrl = await this.media.publicUrl(campaign.template.headerMediaId);
-    }
-    if (info.headerFormat === 'IMAGE' && !headerUrl) throw new Error('O modelo tem imagem no cabeçalho: informe a imagem da campanha');
-    if (info.headerFormat === 'IMAGE' && !/^https?:\/\//.test(headerUrl!)) {
-      throw new Error('Configure a "URL pública do Sendtec" em Configurações: a Meta precisa baixar a imagem do cabeçalho por ela');
-    }
+    const headerUrl = await this.headerUrlFor(campaign.template, campaign.headerMediaUrl);
 
     for (;;) {
       const current = await this.prisma.campaign.findUnique({ where: { id: campaignId }, select: { status: true } });
@@ -127,7 +119,7 @@ export class CampaignRunner {
 
       for (const r of batch) {
         const started = Date.now();
-        await this.sendOne(campaign, r.id, info, headerUrl, label);
+        await this.sendOne(campaign, r.id, headerUrl, label);
         const wait = interval - (Date.now() - started);
         if (wait > 0) await sleep(wait);
       }
@@ -141,7 +133,7 @@ export class CampaignRunner {
    * O Chatwoot só monta a mensagem se o modelo estiver na lista sincronizada da caixa.
    * Pede a sincronização e aguarda até ~1 min; se o modelo não aparecer, a campanha não começa.
    */
-  private async ensureTemplateInChatwoot(template: Template) {
+  async ensureTemplateInChatwoot(template: Template) {
     const has = (list: { name: string; language: string }[]) => list.some((t) => t.name === template.name && t.language === template.language);
 
     let list = await this.chatwoot.inboxTemplates();
@@ -164,44 +156,76 @@ export class CampaignRunner {
     );
   }
 
-  private async sendOne(
-    campaign: Campaign & { template: Template },
-    recipientId: string,
-    info: ReturnType<typeof componentsInfo>,
-    headerUrl: string | null,
-    label: string,
-  ) {
+  /** URL da imagem do cabeçalho: a da campanha ou, se não houver, a cadastrada no modelo. */
+  async headerUrlFor(template: Template, override?: string | null): Promise<string | null> {
+    const info = componentsInfo(template.components as any[]);
+    if (info.headerFormat !== 'IMAGE') return null;
+    const url = override || (template.headerMediaId ? await this.media.publicUrl(template.headerMediaId) : null);
+    if (!url) throw new Error('O modelo tem imagem no cabeçalho: informe a imagem da campanha');
+    if (!/^https?:\/\//.test(url)) {
+      throw new Error('Configure a "URL pública do Sendtec" em Configurações: a Meta precisa baixar a imagem do cabeçalho por ela');
+    }
+    return url;
+  }
+
+  /**
+   * Monta e envia a mensagem de um modelo para um telefone, pelo Chatwoot.
+   * Usado tanto no disparo da campanha quanto no envio de teste — assim o teste sai idêntico.
+   */
+  async deliver(opts: {
+    template: Template;
+    variables: VariablesConfig;
+    clientData: IxcRecord;
+    phone: string;
+    name: string;
+    ixcId: string;
+    headerUrl: string | null;
+    labels: string[];
+    attributes: Record<string, unknown>;
+  }) {
+    const info = componentsInfo(opts.template.components as any[]);
+    const cw = await this.settings.get('chatwoot');
+    const params = await this.variables.resolve(opts.variables, opts.clientData);
+    for (let i = 1; i <= info.bodyVars; i++) {
+      if (!params.body[String(i)]) throw new Error(`Variável {{${i}}} ficou vazia para este cliente`);
+    }
+    const processed: Record<string, unknown> = cw.legacyParams
+      ? { ...params.body }
+      : {
+          body: params.body,
+          ...(info.headerFormat === 'IMAGE' && opts.headerUrl ? { header: { media_url: opts.headerUrl, media_type: 'image' } } : {}),
+          ...(info.dynamicUrlButtons.length
+            ? { buttons: info.dynamicUrlButtons.map((idx) => ({ type: 'url', parameter: params.buttons[String(idx)] ?? '' })) }
+            : {}),
+        };
+
+    const { contactId, sourceId } = await this.chatwoot.ensureContact(opts.phone, opts.name, opts.ixcId);
+    const conversationId = await this.chatwoot.createConversation(contactId, sourceId, opts.attributes);
+    if (opts.labels.length) await this.chatwoot.addLabels(conversationId, opts.labels);
+    const text = renderText(info.bodyText, params.body);
+    const message = await this.chatwoot.sendTemplate(conversationId, text, {
+      name: opts.template.name,
+      category: opts.template.category,
+      language: opts.template.language,
+      processed_params: processed,
+    });
+    return { params, contactId, conversationId, message, text };
+  }
+
+  private async sendOne(campaign: Campaign & { template: Template }, recipientId: string, headerUrl: string | null, label: string) {
     const r = await this.prisma.campaignRecipient.update({ where: { id: recipientId }, data: { status: 'SENDING' } });
     try {
-      const cw = await this.settings.get('chatwoot');
-      const params = await this.variables.resolve(campaign.variables as unknown as VariablesConfig, (r.clientData ?? { id: r.ixcClientId, razao: r.name }) as IxcRecord);
-      for (let i = 1; i <= info.bodyVars; i++) {
-        if (!params.body[String(i)]) throw new Error(`Variável {{${i}}} ficou vazia para este cliente`);
-      }
-
-      const processed: Record<string, unknown> = cw.legacyParams
-        ? { ...params.body }
-        : {
-            body: params.body,
-            ...(info.headerFormat === 'IMAGE' && headerUrl ? { header: { media_url: headerUrl, media_type: 'image' } } : {}),
-            ...(info.dynamicUrlButtons.length
-              ? { buttons: info.dynamicUrlButtons.map((idx) => ({ type: 'url', parameter: params.buttons[String(idx)] ?? '' })) }
-              : {}),
-          };
-
-      const { contactId, sourceId } = await this.chatwoot.ensureContact(r.phone, r.name, r.ixcClientId);
-      const conversationId = await this.chatwoot.createConversation(contactId, sourceId, {
-        sendtec_campaign: campaign.name,
-        ixc_id: r.ixcClientId,
+      const { params, contactId, conversationId, message } = await this.deliver({
+        template: campaign.template,
+        variables: campaign.variables as unknown as VariablesConfig,
+        clientData: (r.clientData ?? { id: r.ixcClientId, razao: r.name }) as IxcRecord,
+        phone: r.phone,
+        name: r.name,
+        ixcId: r.ixcClientId,
+        headerUrl,
+        labels: [label],
+        attributes: { sendtec_campaign: campaign.name, ixc_id: r.ixcClientId },
       });
-      await this.chatwoot.addLabels(conversationId, [label]);
-      const message = await this.chatwoot.sendTemplate(conversationId, renderText(info.bodyText, params.body), {
-        name: campaign.template.name,
-        category: campaign.template.category,
-        language: campaign.template.language,
-        processed_params: processed,
-      });
-
       await this.prisma.campaignRecipient.update({
         where: { id: r.id },
         data: {

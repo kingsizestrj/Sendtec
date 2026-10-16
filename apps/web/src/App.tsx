@@ -13,6 +13,7 @@ import { CampaignDetailPage } from './pages/CampaignDetail';
 import { OptOutsPage } from './pages/OptOuts';
 import { UsersPage } from './pages/Users';
 import { SettingsPage } from './pages/Settings';
+import { ResultsPage } from './pages/Results';
 
 function Protected({ children, admin }: { children: ReactNode; admin?: boolean }) {
   const { user, loading } = useAuth();
@@ -48,6 +49,7 @@ export function App() {
               <Route path="campanhas/:id" element={<CampaignDetailPage />} />
               <Route path="modelos" element={<TemplatesPage />} />
               <Route path="modelos/novo" element={<TemplateNewPage />} />
+              <Route path="resultados" element={<ResultsPage />} />
               <Route path="descadastros" element={<OptOutsPage />} />
               <Route path="usuarios" element={<Protected admin><UsersPage /></Protected>} />
               <Route path="configuracoes" element={<Protected admin><SettingsPage /></Protected>} />

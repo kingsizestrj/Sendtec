@@ -26,6 +26,7 @@ import { CampaignsController } from './campaigns/campaigns.controller';
 import { WebhooksController } from './webhooks/webhooks.controller';
 import { OptOutsController } from './optouts/optouts.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
+import { ResultsController } from './results/results.controller';
 import { SchedulerService } from './scheduler.service';
 
 const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist');
@@ -46,6 +47,7 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     WebhooksController,
     OptOutsController,
     DashboardController,
+    ResultsController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },

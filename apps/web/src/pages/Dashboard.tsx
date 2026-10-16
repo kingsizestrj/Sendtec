@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { fmtDateTime, fmtNumber, pct } from '../lib/format';
 import type { Campaign } from '../lib/types';
 import { Button, Card, Empty, PageHeader, Spinner, Stat, StatusBadge } from '../components/ui';
+import { NumberHealth } from '../components/NumberHealth';
 
 interface Stats {
   messages: Record<string, number>;
@@ -54,6 +55,10 @@ export function DashboardPage() {
         <Stat label="Entregues" value={`${pct(delivered, sent)}%`} sub={`${fmtNumber(delivered)} mensagens`} icon={<CheckCheck className="h-4 w-4" />} accent="bg-fuchsia-500" />
         <Stat label="Lidas" value={`${pct(read, sent)}%`} sub={`${fmtNumber(read)} mensagens`} icon={<CheckCheck className="h-4 w-4 text-sky-400" />} accent="bg-orange-500" />
         <Stat label="Descadastros" value={fmtNumber(stats.optOuts)} icon={<UserX className="h-4 w-4" />} accent="bg-rose-500" />
+      </div>
+
+      <div className="mt-6">
+        <NumberHealth />
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-3">

@@ -1,5 +1,5 @@
 import { clsx } from 'clsx';
-import { AlertCircle, ArrowLeft, ArrowRight, CalendarClock, Check, ImagePlus, MapPinned, RefreshCw, Rocket, Save, Search, UserMinus, UserPlus, Users } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, CalendarClock, Check, ImagePlus, MapPinned, RefreshCw, Rocket, Save, Search, Send, UserMinus, UserPlus, Users } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -10,6 +10,8 @@ import type { Area, AudienceFilter, AudienceResult, Campaign, Catalog, CsvAudien
 import { AudienceMap, MapPoint } from '../components/AudienceMap';
 import { FilterBuilder } from '../components/FilterBuilder';
 import { CsvUploader } from '../components/CsvUploader';
+import { TestSendModal } from '../components/TestSendModal';
+import { QUALITY, useNumberHealth } from '../components/NumberHealth';
 import { PhonePreview } from '../components/PhonePreview';
 import { Button, Card, Field, PageHeader, Spinner, StatusBadge, Toggle, useToast } from '../components/ui';
 
@@ -125,6 +127,8 @@ export function CampaignNewPage() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [testOpen, setTestOpen] = useState(false);
+  const health = useNumberHealth();
 
   useEffect(() => {
     api<Catalog>('/ixc/catalog').then(setCatalog);
@@ -251,10 +255,27 @@ export function CampaignNewPage() {
     }
   };
 
+  const payload = { name, templateId, audience: spec, variables, headerMediaUrl: headerUrl, respectOptOut: isMarketing ? true : respectOptOut };
+
+  // aviso de limite diário e de qualidade do número (Meta)
+  const numberWarnings = (() => {
+    const out: string[] = [];
+    const n = health?.numbers.find((x) => x.limit) ?? health?.numbers[0];
+    if (!n || !audience) return out;
+    if (n.limit && health!.sentLast24h + audience.stats.selected > n.limit) {
+      out.push(
+        `O limite atual do número ${n.phone} é de ${fmtNumber(n.limit)} clientes a cada 24h e ${fmtNumber(health!.sentLast24h)} já foram alcançados. ` +
+          'Mensagens acima do limite são recusadas pela Meta: divida a campanha ou agende parte para amanhã.',
+      );
+    }
+    if (n.quality === 'RED' || (n.quality === 'YELLOW' && isMarketing)) out.push(`Qualidade do número ${QUALITY[n.quality].label.toLowerCase()}: ${QUALITY[n.quality].hint}`);
+    return out;
+  })();
+
   const save = async (launch: boolean) => {
     setSaving(true);
     try {
-      const body = { name, templateId, audience: spec, variables, headerMediaUrl: headerUrl, respectOptOut: isMarketing ? true : respectOptOut };
+      const body = payload;
       const c = id ? await api<Campaign>(`/campaigns/${id}`, { method: 'PATCH', body }) : await api<Campaign>('/campaigns', { body });
       if (launch) {
         await api(`/campaigns/${c.id}/start`, { body: { scheduledAt: when === 'later' ? new Date(scheduledAt).toISOString() : null } });
@@ -575,6 +596,9 @@ export function CampaignNewPage() {
               buttons={info.buttons}
               values={previewValues}
             />
+            <Button variant="outline" className="mt-5 w-full" disabled={!varsOk || !audience?.selected.length} onClick={() => setTestOpen(true)} icon={<Send className="h-4 w-4" />}>
+              Enviar teste para meu WhatsApp
+            </Button>
           </div>
         </div>
       )}
@@ -635,6 +659,12 @@ export function CampaignNewPage() {
               </div>
             </Card>
 
+            {numberWarnings.map((w) => (
+              <div key={w} className="flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+                <AlertCircle className="h-4 w-4 shrink-0" /> {w}
+              </div>
+            ))}
+
             <div className="flex flex-wrap gap-3">
               <Button variant="outline" loading={saving} onClick={() => save(false)} icon={<Save className="h-4 w-4" />}>
                 Salvar rascunho
@@ -663,9 +693,14 @@ export function CampaignNewPage() {
               buttons={info.buttons}
               values={previewValues}
             />
+            <Button variant="outline" className="mt-5 w-full" disabled={!varsOk || !audience?.selected.length} onClick={() => setTestOpen(true)} icon={<Send className="h-4 w-4" />}>
+              Enviar teste para meu WhatsApp
+            </Button>
           </div>
         </div>
       )}
+
+      <TestSendModal open={testOpen} onClose={() => setTestOpen(false)} clients={audience?.selected ?? []} payload={payload} />
 
       {step < 3 && (
         <div className="mt-8 flex justify-between">

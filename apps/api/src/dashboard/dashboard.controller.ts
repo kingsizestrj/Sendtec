@@ -1,9 +1,50 @@
 import { Controller, Get } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
+import { MetaClient } from '../meta/meta.client';
 
 @Controller('dashboard')
 export class DashboardController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private meta: MetaClient) {}
+
+  private healthCache: { at: number; data: unknown } | null = null;
+
+  /**
+   * Saúde dos números do WhatsApp: qualidade (GREEN/YELLOW/RED) e limite diário da Meta,
+   * mais quantos clientes diferentes receberam mensagem do Sendtec nas últimas 24h.
+   */
+  @Get('number-health')
+  async numberHealth() {
+    const limits: Record<string, number | null> = {
+      TIER_50: 50,
+      TIER_250: 250,
+      TIER_1K: 1000,
+      TIER_10K: 10000,
+      TIER_100K: 100000,
+      TIER_UNLIMITED: null,
+    };
+    const since = new Date(Date.now() - 24 * 3600 * 1000);
+    const [{ count }] = await this.prisma.$queryRaw<{ count: bigint }[]>`
+      SELECT count(DISTINCT phone) AS count FROM "CampaignRecipient" WHERE "sentAt" >= ${since}`;
+    // a consulta à Meta fica em cache por 5 min; a contagem de 24h é sempre atual
+    let numbers: unknown[] = [];
+    let error: string | null = null;
+    if (this.healthCache && Date.now() - this.healthCache.at < 5 * 60 * 1000) numbers = this.healthCache.data as unknown[];
+    else try {
+      numbers = (await this.meta.phoneNumbers()).map((n) => ({
+        id: n.id,
+        phone: n.display_phone_number,
+        name: n.verified_name,
+        quality: n.quality_rating ?? 'UNKNOWN',
+        tier: n.messaging_limit_tier ?? null,
+        limit: n.messaging_limit_tier ? (limits[n.messaging_limit_tier] ?? null) : null,
+        status: n.status ?? null,
+      }));
+    } catch (e: any) {
+      error = e.message;
+    }
+    if (!error && !(this.healthCache && Date.now() - this.healthCache.at < 5 * 60 * 1000)) this.healthCache = { at: Date.now(), data: numbers };
+    return { numbers, sentLast24h: Number(count), error };
+  }
 
   @Get()
   async stats() {
