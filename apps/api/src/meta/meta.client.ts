@@ -35,14 +35,50 @@ export class MetaClient {
     throw new BadGatewayException(`Meta: ${msg}`);
   }
 
+  /** App e contas do WhatsApp (WABA) às quais o token dá acesso, segundo o debug_token da Meta. */
+  private async tokenInfo(cfg: MetaSettings): Promise<{ appId?: string; wabaIds: string[] }> {
+    try {
+      const { data } = await axios.get(this.url(cfg, 'debug_token'), {
+        params: { input_token: cfg.accessToken, access_token: cfg.accessToken },
+      });
+      const scopes: { scope: string; target_ids?: string[] }[] = data.data?.granular_scopes ?? [];
+      return {
+        appId: data.data?.app_id,
+        wabaIds: scopes.find((s) => s.scope === 'whatsapp_business_management')?.target_ids ?? [],
+      };
+    } catch {
+      return { wabaIds: [] };
+    }
+  }
+
   async test(cfg: MetaSettings) {
+    const info = await this.tokenInfo(cfg);
+    const hints = [
+      info.wabaIds.length ? `WABA ID(s) liberados para este token: ${info.wabaIds.join(', ')}` : '',
+      info.appId && info.appId !== cfg.appId ? `App ID deste token: ${info.appId}` : '',
+    ].filter(Boolean);
     try {
       const { data } = await axios.get(this.url(cfg, cfg.wabaId), {
-        params: { fields: 'id,name,message_template_namespace' },
+        params: { fields: 'id,name' },
         headers: { Authorization: `Bearer ${cfg.accessToken}` },
       });
-      return { ok: true, name: data.name };
+      // garante que o ID é mesmo de uma conta do WhatsApp Business (e não do número de telefone)
+      await axios.get(this.url(cfg, `${cfg.wabaId}/message_templates`), {
+        params: { limit: 1, fields: 'name' },
+        headers: { Authorization: `Bearer ${cfg.accessToken}` },
+      });
+      if (info.appId && cfg.appId && info.appId !== cfg.appId) {
+        return { ok: false, error: `Conectado à conta "${data.name}", mas o App ID não confere com o do token. ${hints.join('. ')}` };
+      }
+      return { ok: true, name: data.name, appIdHint: !cfg.appId && info.appId ? info.appId : undefined };
     } catch (e) {
+      const err = e as AxiosError<any>;
+      if (err.response?.data?.error?.code === 100) {
+        return {
+          ok: false,
+          error: `O ID informado não é de uma conta do WhatsApp Business (WABA) — talvez seja o ID do número de telefone. ${hints.join('. ')}`.trim(),
+        };
+      }
       this.fail(e);
     }
   }

@@ -68,7 +68,7 @@ export function SettingsPage() {
       const r = await api('/settings/test', { body: { target } });
       let message = r.error;
       if (r.ok && target === 'ixc') message = `Conectado! ${r.totalClientes.toLocaleString('pt-BR')} clientes no IXC.`;
-      if (r.ok && target === 'meta') message = `Conectado à conta "${r.name}".`;
+      if (r.ok && target === 'meta') message = `Conectado à conta "${r.name}".${r.appIdHint ? ` App ID deste token: ${r.appIdHint} (preencha o campo para enviar imagens).` : ''}`;
       if (r.ok && target === 'chatwoot') {
         message = !r.inboxFound
           ? `Conectado, mas a caixa ${s.chatwoot.inboxId} não foi encontrada. Disponíveis: ${r.inboxes.map((i: any) => `${i.id} - ${i.name}`).join(', ')}`
