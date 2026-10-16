@@ -18,7 +18,7 @@ const ADMIN_NAV: typeof NAV = [
 export function Logo({ company }: { company?: string }) {
   return (
     <div className="flex items-center gap-3">
-      <img src="/favicon.svg" className="h-10 w-10 rounded-xl shadow-glow" />
+      <img src="/favicon.svg" className="h-10 w-10 rounded-xl shadow-glow ring-1 ring-white/25" />
       <div>
         <div className="text-lg font-extrabold leading-none tracking-tight">Sendtec</div>
         {company && company !== 'Sendtec' && <div className="mt-1 text-[11px] text-ink-400">{company}</div>}
