@@ -2,7 +2,45 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
+:root {
+  color-scheme: dark;
+  --c-white: 255 255 255;
+  --ink-950: 7 6 13;
+  --ink-900: 13 11 24;
+  --ink-800: 21 18 42;
+  --ink-700: 31 27 58;
+  --ink-600: 44 39 82;
+  --ink-400: 139 134 179;
+  --ink-300: 180 176 212;
+}
+/* Modo claro: "white" vira a cor do texto e os tons ink viram fundos claros */
+html.light {
+  color-scheme: light;
+  --c-white: 24 20 43;
+  --ink-950: 246 245 251;
+  --ink-900: 255 255 255;
+  --ink-800: 241 239 249;
+  --ink-700: 229 226 242;
+  --ink-600: 211 207 230;
+  --ink-400: 108 104 138;
+  --ink-300: 77 73 106;
+}
+html.light .glass { box-shadow: 0 1px 2px rgba(24, 20, 43, 0.04), 0 12px 32px -18px rgba(24, 20, 43, 0.25); }
+html.light .dark-tiles { filter: none; }
+html.light .leaflet-popup-content-wrapper, html.light .leaflet-popup-tip { background: #fff; color: #18142b; border-color: rgba(24, 20, 43, 0.08); }
+html.light .leaflet-bar a, html.light .leaflet-pm-toolbar .button-container a { background-color: #fff !important; border-color: #e5e2f2 !important; }
+html.light .leaflet-pm-toolbar .leaflet-buttons-control-button .control-icon { filter: none; }
+html.light .leaflet-control-attribution { background: rgba(255, 255, 255, 0.8) !important; }
+/* tons claros de status (feitos para fundo escuro) ficam mais fortes no tema claro */
+html.light .text-emerald-300, html.light .text-emerald-200 { color: #047857; }
+html.light .text-amber-300, html.light .text-amber-200, html.light .text-amber-100 { color: #b45309; }
+html.light .text-rose-300, html.light .text-rose-200 { color: #be123c; }
+html.light .text-sky-300 { color: #0369a1; }
+html.light .text-violet-300, html.light .text-violet-200 { color: #6d28d9; }
+html.light .text-fuchsia-300 { color: #a21caf; }
+html.light .text-pink-300 { color: #be185d; }
+html.light .text-cyan-300 { color: #0e7490; }
+html.light .text-zinc-300, html.light .text-zinc-400 { color: #52525b; }
 html, body, #root { height: 100%; }
 body {
   @apply bg-ink-950 text-white font-sans antialiased;

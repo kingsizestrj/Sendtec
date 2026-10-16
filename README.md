@@ -16,6 +16,12 @@ Disparo de modelos do WhatsApp (API oficial da Meta) para clientes do **IXC Prov
 - **Agendamento** com data e hora.
 - **Relatórios**: enviadas, entregues, lidas e falhas por campanha, com mapa colorido por status e exportação em CSV.
 - **Descadastro (opt-out)**: quem responde "SAIR" (ou toca no botão "Sair") deixa de receber campanhas de marketing.
+- **Envio de teste** para o seu WhatsApp com os dados reais de um cliente, antes de disparar.
+- **Qualidade do número e limite diário** da Meta na Visão geral, com aviso na revisão da campanha.
+- **Resultados**: mapa por região e ranking por bairro de entrega, leitura e falhas; respostas aos botões por campanha.
+- **Avisos por WhatsApp** quando uma campanha termina, **monitor das integrações** (faixa de alerta se IXC, Chatwoot ou Meta caírem) e **registro de atividades**.
+- **Duplicar e desagendar campanhas**, criar modelo a partir de outro, importar descadastros por planilha.
+- **Backup diário automático**, troca de senha pelo próprio usuário, "esqueci minha senha" por e-mail e **modo claro/escuro**.
 - **Perfis de acesso**: Administrador (integrações e usuários) e Operador (modelos e campanhas).
 
 | Criação de modelo | Relatório da campanha |

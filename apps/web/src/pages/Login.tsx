@@ -1,6 +1,6 @@
 import { ArrowRight, MapPinned, MessageCircleHeart, Sparkles } from 'lucide-react';
 import { FormEvent, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { Button, Field } from '../components/ui';
 import { Logo } from '../components/Layout';
@@ -28,9 +28,9 @@ export function LoginPage() {
 
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
-      <div className="relative hidden overflow-hidden lg:block">
+      <div className="relative hidden overflow-hidden text-snow lg:block">
         <div className="absolute inset-0 bg-brand opacity-90" />
-        <div className="absolute -left-20 top-1/4 h-96 w-96 rounded-full bg-white/20 blur-3xl" />
+        <div className="absolute -left-20 top-1/4 h-96 w-96 rounded-full bg-snow/20 blur-3xl" />
         <div className="absolute -bottom-20 right-0 h-96 w-96 rounded-full bg-orange-300/30 blur-3xl" />
         <div className="relative flex h-full flex-col justify-between p-14">
           <Logo />
@@ -42,17 +42,17 @@ export function LoginPage() {
                 { icon: Sparkles, t: 'Modelos aprovados pela Meta', d: 'Crie, envie para análise e acompanhe o status.' },
                 { icon: MessageCircleHeart, t: 'Tudo registrado no Chatwoot', d: 'Entregas, leituras e respostas no mesmo lugar.' },
               ].map(({ icon: Icon, t, d }) => (
-                <div key={t} className="flex items-start gap-4 rounded-2xl bg-white/10 p-4 backdrop-blur">
+                <div key={t} className="flex items-start gap-4 rounded-2xl bg-snow/10 p-4 backdrop-blur">
                   <Icon className="mt-0.5 h-5 w-5 shrink-0" />
                   <div>
                     <div className="font-bold">{t}</div>
-                    <div className="text-sm text-white/80">{d}</div>
+                    <div className="text-sm text-snow/80">{d}</div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-          <div className="text-sm text-white/70">Feito para provedores de internet</div>
+          <div className="text-sm text-snow/70">Feito para provedores de internet</div>
         </div>
       </div>
 
@@ -67,7 +67,16 @@ export function LoginPage() {
             <Field label="E-mail">
               <input className="input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </Field>
-            <Field label="Senha">
+            <Field
+              label={
+                <span className="flex justify-between">
+                  Senha
+                  <Link to="/esqueci-senha" className="normal-case tracking-normal text-fuchsia-300 hover:underline">
+                    Esqueci minha senha
+                  </Link>
+                </span>
+              }
+            >
               <input className="input" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </Field>
             {error && <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">{error}</div>}

@@ -316,7 +316,7 @@ export function CampaignNewPage() {
               onClick={() => setStep(i)}
               className={clsx(
                 'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition',
-                i === step ? 'bg-brand text-white shadow-glow' : i < step ? 'bg-white/5 text-white' : 'text-ink-400',
+                i === step ? 'bg-brand text-snow shadow-glow' : i < step ? 'bg-white/5 text-white' : 'text-ink-400',
               )}
             >
               <span className={clsx('grid h-5 w-5 place-items-center rounded-full text-[11px]', i < step ? 'bg-emerald-500' : 'bg-white/15')}>
@@ -409,7 +409,7 @@ export function CampaignNewPage() {
                   setExcluded([]);
                   setAudience(null);
                 }}
-                className={clsx('rounded-lg px-4 py-2 text-sm font-semibold transition', source === v ? 'bg-brand text-white shadow-glow' : 'text-ink-300 hover:text-white')}
+                className={clsx('rounded-lg px-4 py-2 text-sm font-semibold transition', source === v ? 'bg-brand text-snow shadow-glow' : 'text-ink-300 hover:text-white')}
               >
                 {l}
               </button>

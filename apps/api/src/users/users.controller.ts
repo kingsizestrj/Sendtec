@@ -4,6 +4,7 @@ import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'cla
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma.service';
 import { AuthUser, CurrentUser, Roles } from '../auth/decorators';
+import { AuditService } from '../audit/audit.service';
 
 class CreateUserDto {
   @IsString() name: string;
@@ -24,7 +25,7 @@ const select = { id: true, name: true, email: true, role: true, active: true, cr
 @Roles(Role.ADMIN)
 @Controller('users')
 export class UsersController {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private audit: AuditService) {}
 
   @Get()
   list() {
@@ -32,13 +33,15 @@ export class UsersController {
   }
 
   @Post()
-  async create(@Body() dto: CreateUserDto) {
+  async create(@Body() dto: CreateUserDto, @CurrentUser() me: AuthUser) {
     const email = dto.email.toLowerCase();
     if (await this.prisma.user.findUnique({ where: { email } })) throw new BadRequestException('E-mail já cadastrado');
-    return this.prisma.user.create({
+    const u = await this.prisma.user.create({
       data: { name: dto.name, email, role: dto.role, passwordHash: await bcrypt.hash(dto.password, 10) },
       select,
     });
+    await this.audit.log(me, 'Criou usuário', 'usuario', u.id, { usuario: u.email, perfil: u.role });
+    return u;
   }
 
   @Patch(':id')
@@ -47,11 +50,14 @@ export class UsersController {
       throw new BadRequestException('Você não pode desativar ou rebaixar o próprio usuário');
     }
     const { password, ...rest } = dto;
-    return this.prisma.user.update({
+    const u = await this.prisma.user.update({
       where: { id },
       data: { ...rest, ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}) },
       select,
     });
+    const what = [rest.role && 'perfil', rest.active !== undefined && (rest.active ? 'ativou' : 'desativou'), rest.name && 'nome', password && 'senha'].filter(Boolean);
+    await this.audit.log(me, 'Alterou usuário', 'usuario', id, { usuario: u.email, alteracoes: what });
+    return u;
   }
 
   @Delete(':id')
@@ -59,7 +65,8 @@ export class UsersController {
     if (id === me.id) throw new BadRequestException('Você não pode remover o próprio usuário');
     // Usuários com campanhas são apenas desativados para manter o histórico
     const used = await this.prisma.campaign.count({ where: { createdById: id } });
-    if (used) return this.prisma.user.update({ where: { id }, data: { active: false }, select });
-    return this.prisma.user.delete({ where: { id }, select });
+    const u = used ? await this.prisma.user.update({ where: { id }, data: { active: false }, select }) : await this.prisma.user.delete({ where: { id }, select });
+    await this.audit.log(me, used ? 'Desativou usuário (tem campanhas)' : 'Excluiu usuário', 'usuario', id, { usuario: u.email });
+    return u;
   }
 }

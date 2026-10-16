@@ -50,8 +50,38 @@ export class WebhooksController {
     return { ok: true };
   }
 
+  /**
+   * Guarda a primeira resposta do cliente à campanha (texto livre ou botão de resposta rápida).
+   * Procura pela conversa criada no disparo; se não achar, pelo telefone, em envios dos últimos 7 dias.
+   */
+  private async recordReply(body: any) {
+    const content = String(body.content ?? '').trim();
+    if (!content) return;
+    const conversationId = Number(body.conversation?.id) || null;
+    const sender = body.sender ?? body.conversation?.meta?.sender ?? {};
+    const phone = normalizeBrPhone(sender.phone_number);
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const recipient =
+      (conversationId &&
+        (await this.prisma.campaignRecipient.findFirst({ where: { chatwootConversationId: conversationId }, orderBy: { sentAt: 'desc' } }))) ||
+      (phone && (await this.prisma.campaignRecipient.findFirst({ where: { phone, sentAt: { gte: since } }, orderBy: { sentAt: 'desc' } })));
+    if (!recipient || recipient.reply) return;
+    await this.prisma.campaignRecipient.update({
+      where: { id: recipient.id },
+      data: {
+        reply: content.slice(0, 300),
+        repliedAt: new Date(),
+        // quem responde, leu
+        ...(recipient.status === 'SENT' || recipient.status === 'DELIVERED'
+          ? { status: 'READ', readAt: recipient.readAt ?? new Date(), deliveredAt: recipient.deliveredAt ?? new Date() }
+          : {}),
+      },
+    });
+  }
+
   private async incoming(body: any, inboxId: number) {
     if (body.inbox?.id && Number(body.inbox.id) !== Number(inboxId)) return;
+    await this.recordReply(body).catch((e) => this.logger.warn(`Resposta não registrada: ${e.message}`));
     const general = await this.settings.get('general');
     const keyword = normalizeKeyword(String(body.content ?? ''));
     const keywords = (general.optOutKeywords ?? []).map(normalizeKeyword);

@@ -18,7 +18,7 @@ export function Button({
       className={clsx(
         'inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition active:scale-[.98] disabled:opacity-50 disabled:pointer-events-none whitespace-nowrap',
         size === 'sm' ? 'px-3 py-1.5 text-xs' : 'px-4 py-2.5 text-sm',
-        variant === 'primary' && 'bg-brand text-white shadow-glow hover:brightness-110',
+        variant === 'primary' && 'bg-brand text-snow shadow-glow hover:brightness-110',
         variant === 'ghost' && 'text-ink-300 hover:text-white hover:bg-white/5',
         variant === 'outline' && 'border border-white/10 bg-white/[0.03] text-white hover:bg-white/[0.07]',
         variant === 'danger' && 'bg-rose-500/15 text-rose-300 border border-rose-500/30 hover:bg-rose-500/25',
@@ -146,7 +146,7 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
   return (
     <button type="button" onClick={() => onChange(!checked)} className="inline-flex items-center gap-3 text-sm">
       <span className={clsx('relative h-6 w-11 rounded-full transition', checked ? 'bg-brand' : 'bg-white/10')}>
-        <span className={clsx('absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all', checked ? 'left-[22px]' : 'left-0.5')} />
+        <span className={clsx('absolute top-0.5 h-5 w-5 rounded-full bg-snow shadow transition-all', checked ? 'left-[22px]' : 'left-0.5')} />
       </span>
       {label}
     </button>

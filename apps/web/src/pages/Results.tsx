@@ -112,7 +112,7 @@ export function ResultsPage() {
                     <button
                       key={k}
                       onClick={() => setMetric(k)}
-                      className={clsx('rounded-lg px-3.5 py-1.5 text-sm font-medium transition', metric === k ? 'bg-brand text-white shadow-glow' : 'text-ink-300 hover:text-white')}
+                      className={clsx('rounded-lg px-3.5 py-1.5 text-sm font-medium transition', metric === k ? 'bg-brand text-snow shadow-glow' : 'text-ink-300 hover:text-white')}
                     >
                       {METRICS[k].label}
                     </button>

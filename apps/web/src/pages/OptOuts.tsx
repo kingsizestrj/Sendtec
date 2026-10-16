@@ -1,5 +1,6 @@
-import { Ban, Plus, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { Ban, Plus, Trash2, Upload } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { guessColumns, parseCsv } from '../lib/csv';
 import { api } from '../lib/api';
 import { fmtDateTime, fmtPhone } from '../lib/format';
 import { Button, Card, Empty, Field, Modal, PageHeader, Spinner, useToast } from '../components/ui';
@@ -12,6 +13,31 @@ export function OptOutsPage() {
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ phone: '', name: '', reason: '' });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+
+  const importCsv = async (file?: File) => {
+    if (!file) return;
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      let text = new TextDecoder('utf-8').decode(buf);
+      if (text.includes('\uFFFD')) text = new TextDecoder('windows-1252').decode(buf);
+      const { columns, rows } = parseCsv(text);
+      const { phoneColumn, nameColumn } = guessColumns(columns);
+      const phoneCol = phoneColumn || columns[0];
+      if (!phoneCol || !rows.length) throw new Error('Planilha vazia ou sem coluna de telefone');
+      const r = await api<{ added: number; invalid: number; alreadyListed: number }>('/optouts/import', {
+        body: { rows: rows.map((row) => ({ phone: row[phoneCol], name: nameColumn ? row[nameColumn] : undefined })) },
+      });
+      toast(`${r.added} número(s) bloqueados · ${r.alreadyListed} já estavam na lista · ${r.invalid} inválido(s)`);
+      load();
+    } catch (e: any) {
+      toast(e.message, 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const load = useCallback(() => api<OptOut[]>(`/optouts?search=${encodeURIComponent(search)}`).then(setItems), [search]);
   useEffect(() => {
@@ -43,9 +69,15 @@ export function OptOutsPage() {
         title="Descadastros"
         subtitle="Clientes que responderam SAIR (ou foram bloqueados à mão) não recebem campanhas de marketing"
         actions={
-          <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" />}>
-            Bloquear número
-          </Button>
+          <>
+            <input ref={fileRef} type="file" accept=".csv,text/csv,text/plain" hidden onChange={(e) => { importCsv(e.target.files?.[0]); e.target.value = ''; }} />
+            <Button variant="outline" loading={importing} onClick={() => fileRef.current?.click()} icon={<Upload className="h-4 w-4" />}>
+              Importar planilha
+            </Button>
+            <Button onClick={() => setOpen(true)} icon={<Plus className="h-4 w-4" />}>
+              Bloquear número
+            </Button>
+          </>
         }
       />
       <Card className="p-5">
@@ -74,7 +106,7 @@ export function OptOutsPage() {
                     <td className="py-3 pr-4 text-ink-300">{o.name ?? '—'}</td>
                     <td className="py-3 pr-4 text-ink-300">{o.reason ?? '—'}</td>
                     <td className="py-3 pr-4">
-                      <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs">{o.source === 'whatsapp' ? 'WhatsApp' : 'Manual'}</span>
+                      <span className="rounded-full bg-white/5 px-2 py-0.5 text-xs">{o.source === 'whatsapp' ? 'WhatsApp' : o.source === 'importacao' ? 'Planilha' : 'Manual'}</span>
                     </td>
                     <td className="py-3 pr-4 text-ink-300">{fmtDateTime(o.createdAt)}</td>
                     <td className="py-3 text-right">

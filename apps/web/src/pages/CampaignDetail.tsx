@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, Ban, CheckCheck, Download, Eye, Pause, Pencil, Play, RotateCcw, Send, Trash2, XCircle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Ban, CalendarX, CheckCheck, Copy, Download, Eye, MessageCircleReply, Pause, Pencil, Play, RotateCcw, Send, Trash2, XCircle } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { clsx } from 'clsx';
@@ -41,9 +41,11 @@ export function CampaignDetailPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState('');
+  const [replies, setReplies] = useState<{ total: number; buttons: { text: string; count: number }[]; others: number; latest: { name: string; phone: string; reply: string; repliedAt: string }[] } | null>(null);
 
   const load = useCallback(async () => {
     setC(await api<Campaign>(`/campaigns/${id}`));
+    api(`/campaigns/${id}/replies`).then(setReplies).catch(() => undefined);
     setList(await api(`/campaigns/${id}/recipients?status=${tab}&search=${encodeURIComponent(search)}&page=${page}&pageSize=25`));
   }, [id, tab, search, page]);
 
@@ -87,6 +89,11 @@ export function CampaignDetailPage() {
     if (confirmMsg && !confirm(confirmMsg)) return;
     setBusy(action);
     try {
+      if (action === 'duplicate') {
+        const copy = await api<Campaign>(`/campaigns/${id}/duplicate`, { method: 'POST', body: {} });
+        toast('Cópia criada como rascunho');
+        return nav(`/campanhas/${copy.id}/editar`);
+      }
       if (action === 'delete') {
         await api(`/campaigns/${id}`, { method: 'DELETE' });
         toast('Campanha excluída');
@@ -137,6 +144,14 @@ export function CampaignDetailPage() {
                 </Button>
               </Link>
             )}
+            {c.status === 'SCHEDULED' && (
+              <Button variant="outline" loading={busy === 'unschedule'} onClick={() => act('unschedule')} icon={<CalendarX className="h-4 w-4" />}>
+                Desagendar
+              </Button>
+            )}
+            <Button variant="outline" loading={busy === 'duplicate'} onClick={() => act('duplicate')} icon={<Copy className="h-4 w-4" />}>
+              Duplicar
+            </Button>
             {c.status === 'DRAFT' && (
               <Button loading={busy === 'start'} onClick={() => act('start', 'Disparar a campanha agora?')} icon={<Send className="h-4 w-4" />}>
                 Disparar agora
@@ -204,6 +219,44 @@ export function CampaignDetailPage() {
         <Stat label="Ignoradas" value={fmtNumber(k.SKIPPED)} sub="opt-out ou cancelamento" icon={<Ban className="h-4 w-4" />} accent="bg-zinc-500" />
       </div>
 
+      {replies && replies.total > 0 && (
+        <Card className="mt-6 p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <MessageCircleReply className="h-4 w-4 text-fuchsia-300" />
+            <h3 className="font-bold">Respostas dos clientes</h3>
+            <span className="text-sm text-ink-400">
+              {fmtNumber(replies.total)} responderam ({pct(replies.total, sent)}% das enviadas)
+            </span>
+          </div>
+          <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+            <div className="space-y-2">
+              {[...replies.buttons.map((b) => ({ label: `"${b.text}"`, count: b.count })), { label: 'Outras respostas', count: replies.others }].map((r) => (
+                <div key={r.label} className="rounded-xl bg-white/[0.03] px-3 py-2.5">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium">{r.label}</span>
+                    <span className="font-bold">{fmtNumber(r.count)}</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/5">
+                    <div className="h-full rounded-full bg-brand" style={{ width: `${pct(r.count, replies.total)}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="max-h-72 divide-y divide-white/5 overflow-y-auto pr-1">
+              {replies.latest.map((r, i) => (
+                <div key={i} className="flex gap-3 py-2 text-sm">
+                  <div className="w-36 shrink-0">
+                    <div className="truncate font-medium">{r.name}</div>
+                    <div className="text-xs text-ink-400">{fmtDateTime(r.repliedAt)}</div>
+                  </div>
+                  <div className="min-w-0 flex-1 rounded-xl rounded-tl-sm bg-white/[0.04] px-3 py-2 text-ink-300">{r.reply}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {points.length > 0 && (
         <Card className="mt-6 p-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2 px-2">
@@ -230,7 +283,7 @@ export function CampaignDetailPage() {
                   setTab(v);
                   setPage(1);
                 }}
-                className={clsx('rounded-full px-3 py-1 text-xs font-semibold transition', tab === v ? 'bg-brand text-white' : 'bg-white/5 text-ink-300 hover:text-white')}
+                className={clsx('rounded-full px-3 py-1 text-xs font-semibold transition', tab === v ? 'bg-brand text-snow' : 'bg-white/5 text-ink-300 hover:text-white')}
               >
                 {l} {v ? `(${fmtNumber(k[v])})` : `(${fmtNumber(total)})`}
               </button>

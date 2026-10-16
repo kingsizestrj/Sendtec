@@ -39,7 +39,7 @@ export function PhonePreview({
       );
 
   return (
-    <div className="mx-auto w-[300px] rounded-[2.6rem] bg-gradient-to-b from-zinc-700 to-zinc-900 p-2.5 shadow-2xl shadow-fuchsia-900/30">
+    <div className="mx-auto w-[300px] rounded-[2.6rem] text-snow bg-gradient-to-b from-zinc-700 to-zinc-900 p-2.5 shadow-2xl shadow-fuchsia-900/30">
       <div className="overflow-hidden rounded-[2.1rem] bg-[#0b141a]">
         <div className="flex items-center gap-3 bg-[#1f2c34] px-4 pb-3 pt-6">
           <div className="grid h-9 w-9 place-items-center rounded-full bg-brand text-sm font-bold">{company.charAt(0)}</div>

@@ -1,4 +1,5 @@
-import { CalendarClock, Megaphone, Plus } from 'lucide-react';
+import { CalendarClock, Megaphone, Plus, Search } from 'lucide-react';
+import { clsx } from 'clsx';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -8,6 +9,9 @@ import { Button, Card, Empty, PageHeader, Spinner, StatusBadge } from '../compon
 
 export function CampaignsPage() {
   const [items, setItems] = useState<Campaign[] | null>(null);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('');
+  const [period, setPeriod] = useState(0);
 
   useEffect(() => {
     const load = () => api<Campaign[]>('/campaigns').then(setItems);
@@ -27,6 +31,39 @@ export function CampaignsPage() {
           </Link>
         }
       />
+      {items && items.length > 0 && (
+        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-center">
+          <div className="relative lg:w-80">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400" />
+            <input className="input pl-9" placeholder="Buscar por nome ou modelo" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              ['', 'Todas'],
+              ['RUNNING', 'Enviando'],
+              ['SCHEDULED', 'Agendadas'],
+              ['DRAFT', 'Rascunhos'],
+              ['COMPLETED', 'Concluídas'],
+              ['PAUSED', 'Pausadas'],
+              ['CANCELLED', 'Canceladas'],
+            ].map(([v, l]) => (
+              <button
+                key={v}
+                onClick={() => setStatus(v)}
+                className={clsx('rounded-full px-3 py-1.5 text-xs font-semibold transition', status === v ? 'bg-brand text-snow' : 'bg-white/5 text-ink-300 hover:text-white')}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+          <select className="input lg:ml-auto lg:w-44" value={period} onChange={(e) => setPeriod(Number(e.target.value))}>
+            <option value={0}>Qualquer data</option>
+            <option value={7}>Últimos 7 dias</option>
+            <option value={30}>Últimos 30 dias</option>
+            <option value={90}>Últimos 90 dias</option>
+          </select>
+        </div>
+      )}
       {!items ? (
         <Spinner className="mx-auto mt-16 h-8 w-8" />
       ) : !items.length ? (
@@ -42,7 +79,14 @@ export function CampaignsPage() {
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {items.map((c) => {
+          {items
+            .filter((c) => !status || c.status === status || (status === 'CANCELLED' && c.status === 'FAILED'))
+            .filter((c) => !period || Date.now() - new Date(c.createdAt).getTime() <= period * 86400000)
+            .filter((c) => {
+              const q = search.trim().toLowerCase();
+              return !q || c.name.toLowerCase().includes(q) || c.template.name.toLowerCase().includes(q);
+            })
+            .map((c) => {
             const total = Object.values(c.counts).reduce((a, b) => a + b, 0);
             const done = total - (c.counts.PENDING ?? 0) - (c.counts.SENDING ?? 0);
             const read = c.counts.READ ?? 0;

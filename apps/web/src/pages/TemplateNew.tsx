@@ -1,6 +1,8 @@
 import { ArrowLeft, ImagePlus, Plus, Send, Trash2 } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { localMedia } from '../lib/format';
+import type { Template } from '../lib/types';
 import { clsx } from 'clsx';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -36,6 +38,40 @@ export function TemplateNewPage() {
   const [examples, setExamples] = useState<string[]>(['Maria']);
   const [footer, setFooter] = useState('');
   const [buttons, setButtons] = useState<Btn[]>([]);
+  const [params] = useSearchParams();
+  const fromId = params.get('from');
+
+  // "Criar a partir deste": preenche o formulário com um modelo existente
+  useEffect(() => {
+    if (!fromId) return;
+    api<Template>(`/templates/${fromId}`).then((t) => {
+      const comp = (type: string) => t.components.find((c: any) => c.type === type);
+      const header = comp('HEADER');
+      const body = comp('BODY');
+      setName(`${t.name}_v2`.slice(0, 512));
+      setCategory(t.category === 'UTILITY' ? 'UTILITY' : 'MARKETING');
+      setLanguage(t.language);
+      if (header?.format === 'TEXT') {
+        setHeaderType('TEXT');
+        setHeaderText(header.text ?? '');
+      } else if (header?.format === 'IMAGE' && t.headerMediaId) {
+        setHeaderType('IMAGE');
+        setImage({ id: t.headerMediaId, preview: localMedia(t.headerMediaUrl) ?? '' });
+      } else if (header?.format === 'IMAGE') setHeaderType('IMAGE');
+      setBody(body?.text ?? '');
+      setExamples(body?.example?.body_text?.[0] ?? []);
+      setFooter(comp('FOOTER')?.text ?? '');
+      setButtons(
+        (comp('BUTTONS')?.buttons ?? []).map((b: any) =>
+          b.type === 'URL'
+            ? { type: 'URL', text: b.text, url: b.url, urlExample: b.example?.[0] }
+            : b.type === 'PHONE_NUMBER'
+              ? { type: 'PHONE_NUMBER', text: b.text, phoneNumber: b.phone_number }
+              : { type: 'QUICK_REPLY', text: b.text },
+        ),
+      );
+    });
+  }, [fromId]);
   const [saving, setSaving] = useState(false);
 
   const vars = countVars(body);
@@ -100,7 +136,7 @@ export function TemplateNewPage() {
           key={v}
           type="button"
           onClick={() => set(v)}
-          className={clsx('rounded-lg px-3.5 py-1.5 text-sm font-medium transition', value === v ? 'bg-brand text-white shadow-glow' : 'text-ink-300 hover:text-white')}
+          className={clsx('rounded-lg px-3.5 py-1.5 text-sm font-medium transition', value === v ? 'bg-brand text-snow shadow-glow' : 'text-ink-300 hover:text-white')}
         >
           {l}
         </button>
@@ -111,7 +147,7 @@ export function TemplateNewPage() {
   return (
     <>
       <PageHeader
-        title="Novo modelo"
+        title={fromId ? 'Novo modelo (a partir de outro)' : 'Novo modelo'}
         subtitle="Depois de enviado, a Meta costuma analisar em alguns minutos"
         actions={
           <Link to="/modelos">

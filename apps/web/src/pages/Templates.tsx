@@ -84,7 +84,7 @@ export function TemplatesPage() {
           <button
             key={f.v}
             onClick={() => setFilter(f.v)}
-            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${filter === f.v ? 'bg-brand text-white' : 'bg-white/5 text-ink-300 hover:text-white'}`}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium transition ${filter === f.v ? 'bg-brand text-snow' : 'bg-white/5 text-ink-300 hover:text-white'}`}
           >
             {f.l}
           </button>
@@ -143,6 +143,12 @@ export function TemplatesPage() {
                 )}
                 <div className="mt-4 flex items-center justify-between text-xs text-ink-400">
                   <span>Atualizado {fmtDateTime(t.updatedAt)}</span>
+                  <Link
+                    to={`/modelos/novo?from=${t.id}`}
+                    className="ml-auto mr-1 rounded-lg px-2 py-1 text-xs font-semibold text-fuchsia-300 opacity-0 transition hover:bg-white/5 group-hover:opacity-100"
+                  >
+                    Criar a partir deste
+                  </Link>
                   {user?.role === 'ADMIN' && (
                     <button onClick={() => remove(t)} className="rounded-lg p-1.5 opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 group-hover:opacity-100" title="Excluir">
                       <Trash2 className="h-4 w-4" />

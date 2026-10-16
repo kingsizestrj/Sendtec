@@ -54,7 +54,7 @@ export function UsersPage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {items.map((u) => (
             <Card key={u.id} className={`flex items-center gap-4 p-5 ${u.active ? '' : 'opacity-50'}`}>
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand text-lg font-bold">{u.name.charAt(0)}</div>
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-brand text-lg font-bold text-snow">{u.name.charAt(0)}</div>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-bold">
                   {u.name} {u.id === me?.id && <span className="text-xs font-normal text-ink-400">(você)</span>}

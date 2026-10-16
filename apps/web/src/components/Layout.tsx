@@ -1,5 +1,7 @@
 import { clsx } from 'clsx';
-import { Ban, LayoutDashboard, LogOut, MapPinned, Megaphone, Menu, MessageSquareText, Settings, Users, X } from 'lucide-react';
+import { Ban, History, LayoutDashboard, LogOut, MapPinned, Megaphone, Menu, MessageSquareText, Moon, Settings, Sun, Users, X } from 'lucide-react';
+import { AccountModal } from './AccountModal';
+import { IntegrationBanner } from './IntegrationBanner';
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
@@ -13,6 +15,7 @@ const NAV = [
 ];
 const ADMIN_NAV: typeof NAV = [
   { to: '/usuarios', label: 'Usuários', icon: Users },
+  { to: '/atividades', label: 'Atividades', icon: History },
   { to: '/configuracoes', label: 'Configurações', icon: Settings },
 ];
 
@@ -31,6 +34,18 @@ export function Logo({ company }: { company?: string }) {
 export function Layout() {
   const { user, company, logout } = useAuth();
   const [open, setOpen] = useState(false);
+  const [account, setAccount] = useState(false);
+  const [light, setLight] = useState(() => document.documentElement.classList.contains('light'));
+  const toggleTheme = () => {
+    const next = !light;
+    document.documentElement.classList.toggle('light', next);
+    try {
+      localStorage.setItem('sendtec_theme', next ? 'light' : 'dark');
+    } catch {
+      /* armazenamento indisponível */
+    }
+    setLight(next);
+  };
   const items = user?.role === 'ADMIN' ? [...NAV, ...ADMIN_NAV] : NAV;
 
   const nav = (
@@ -60,13 +75,16 @@ export function Layout() {
   );
 
   const userBox = (
-    <div className="glass flex items-center gap-3 rounded-2xl p-3">
-      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-sm font-bold">{user?.name.charAt(0)}</div>
-      <div className="min-w-0 flex-1">
+    <div className="glass flex items-center gap-2 rounded-2xl p-2.5">
+      <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand text-sm font-bold text-snow">{user?.name.charAt(0)}</div>
+      <button onClick={() => setAccount(true)} title="Minha conta" className="min-w-0 flex-1 text-left">
         <div className="truncate text-sm font-semibold">{user?.name}</div>
-        <div className="text-[11px] text-ink-400">{user?.role === 'ADMIN' ? 'Administrador' : 'Operador'}</div>
-      </div>
-      <button onClick={logout} title="Sair" className="rounded-lg p-2 text-ink-300 hover:bg-white/5 hover:text-white">
+        <div className="truncate text-[11px] text-ink-400">{user?.role === 'ADMIN' ? 'Administrador' : 'Operador'}</div>
+      </button>
+      <button onClick={toggleTheme} title={light ? 'Modo escuro' : 'Modo claro'} className="rounded-lg p-1.5 text-ink-300 hover:bg-white/5 hover:text-white">
+        {light ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
+      </button>
+      <button onClick={logout} title="Sair" className="rounded-lg p-1.5 text-ink-300 hover:bg-white/5 hover:text-white">
         <LogOut className="h-4 w-4" />
       </button>
     </div>
@@ -107,9 +125,11 @@ export function Layout() {
 
       <main className="min-w-0 flex-1 px-4 pb-16 pt-20 sm:px-8 lg:pt-10">
         <div className="mx-auto max-w-7xl">
+          <IntegrationBanner />
           <Outlet />
         </div>
       </main>
+      <AccountModal open={account} onClose={() => setAccount(false)} />
     </div>
   );
 }

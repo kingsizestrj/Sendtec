@@ -1,4 +1,5 @@
-import { CheckCircle2, Copy, Database, Globe, MessagesSquare, PlugZap, Save, XCircle } from 'lucide-react';
+import { BellRing, CheckCircle2, Copy, Database, Globe, Mail, MessagesSquare, PlugZap, Save, Sparkles, XCircle } from 'lucide-react';
+import type { Template } from '../lib/types';
 import { ReactNode, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Button, Card, Field, PageHeader, Spinner, Toggle, useToast } from '../components/ui';
@@ -42,12 +43,27 @@ export function SettingsPage() {
   const [testing, setTesting] = useState('');
   const [results, setResults] = useState<Record<string, any>>({});
 
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [testEmail, setTestEmail] = useState('');
+  const loadTemplates = () => api<Template[]>('/templates').then((t) => setTemplates(t.filter((x) => x.status !== 'DELETED')));
   useEffect(() => {
     api('/settings').then(setS);
+    loadTemplates();
   }, []);
+
+  const createNotifyTemplate = async () => {
+    try {
+      const t = await api<Template>('/templates/notify-template', { method: 'POST' });
+      await loadTemplates();
+      setS((cur: S) => ({ ...cur, general: { ...cur.general, notifyTemplateId: t.id } }));
+      toast('Modelo "sendtec_aviso" enviado para aprovação da Meta. Salve as configurações.');
+    } catch (e: any) {
+      toast(e.message, 'error');
+    }
+  };
   if (!s) return <Spinner className="mx-auto mt-24 h-8 w-8" />;
 
-  const set = (section: string, key: string, value: unknown) => setS({ ...s, [section]: { ...s[section], [key]: value } });
+  const set = (section: string, key: string, value: unknown) => setS((cur: S) => ({ ...cur, [section]: { ...(cur[section] ?? {}), [key]: value } }));
 
   const save = async () => {
     setSaving(true);
@@ -65,9 +81,11 @@ export function SettingsPage() {
     setTesting(target);
     try {
       await api('/settings', { method: 'PUT', body: s });
-      const r = await api('/settings/test', { body: { target } });
+      const r = await api('/settings/test', { body: { target, email: target === 'smtp' ? testEmail : undefined } });
       let message = r.error;
       if (r.ok && target === 'ixc') message = `Conectado! ${r.totalClientes.toLocaleString('pt-BR')} clientes no IXC.`;
+      if (r.ok && target === 'smtp') message = testEmail ? `Conectado! E-mail de teste enviado para ${testEmail}.` : 'Conectado ao servidor de e-mail.';
+      if (r.ok && target === 'notify') message = `Aviso enviado para ${r.sent} número(s).${r.errors?.length ? ' Erros: ' + r.errors.join('; ') : ''}`;
       if (r.ok && target === 'meta') message = `Conectado à conta "${r.name}".${r.appIdHint ? ` App ID deste token: ${r.appIdHint} (preencha o campo para enviar imagens).` : ''}`;
       if (r.ok && target === 'chatwoot') {
         message = !r.inboxFound
@@ -172,6 +190,72 @@ export function SettingsPage() {
           <Field label="Versão da Graph API">
             <input className="input" value={s.meta.graphVersion} onChange={(e) => set('meta', 'graphVersion', e.target.value)} />
           </Field>
+        </Section>
+
+        <Section
+          icon={<BellRing className="h-5 w-5" />}
+          title="Avisos por WhatsApp"
+          subtitle="Resumo enviado aos responsáveis quando uma campanha termina"
+          onTest={() => test('notify')}
+          testing={testing === 'notify'}
+          result={results.notify}
+        >
+          <Field label="WhatsApp que recebem os avisos" hint="Separados por vírgula, com DDD">
+            <input
+              className="input"
+              value={(s.general.notifyPhones ?? []).join(', ')}
+              onChange={(e) => set('general', 'notifyPhones', e.target.value.split(',').map((x) => x.trim()).filter(Boolean))}
+              placeholder="(22) 99999-0000, (22) 98888-0000"
+            />
+          </Field>
+          <Field label="Modelo usado nos avisos" hint='A Meta só deixa iniciar conversa com modelo aprovado. Use um modelo de utilidade com uma variável {{1}}.'>
+            <div className="flex gap-2">
+              <select className="input" value={s.general.notifyTemplateId ?? ''} onChange={(e) => set('general', 'notifyTemplateId', e.target.value)}>
+                <option value="">— nenhum —</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} ({t.status === 'APPROVED' ? 'aprovado' : t.status.toLowerCase()})
+                  </option>
+                ))}
+              </select>
+              {!templates.some((t) => t.name === 'sendtec_aviso') && (
+                <Button variant="outline" onClick={createNotifyTemplate} icon={<Sparkles className="h-4 w-4" />}>
+                  Criar
+                </Button>
+              )}
+            </div>
+          </Field>
+        </Section>
+
+        <Section
+          icon={<Mail className="h-5 w-5" />}
+          title="E-mail (SMTP)"
+          subtitle='Usado no "Esqueci minha senha"'
+          onTest={() => test('smtp')}
+          testing={testing === 'smtp'}
+          result={results.smtp}
+        >
+          <Field label="Servidor SMTP" hint="Ex.: smtp.gmail.com, smtp.office365.com">
+            <input className="input" value={s.smtp?.host ?? ''} onChange={(e) => set('smtp', 'host', e.target.value)} />
+          </Field>
+          <Field label="Porta" hint="587 (TLS) ou 465 (SSL)">
+            <input className="input" type="number" value={s.smtp?.port ?? 587} onChange={(e) => set('smtp', 'port', Number(e.target.value))} />
+          </Field>
+          <Field label="Usuário">
+            <input className="input" value={s.smtp?.user ?? ''} onChange={(e) => set('smtp', 'user', e.target.value)} />
+          </Field>
+          <Field label="Senha" hint="No Gmail/Google Workspace use uma senha de app">
+            <input className="input" type="password" value={s.smtp?.pass ?? ''} onChange={(e) => set('smtp', 'pass', e.target.value)} />
+          </Field>
+          <Field label="Remetente" hint='Ex.: Sendtec <noc@voltecautomacao.com.br>'>
+            <input className="input" value={s.smtp?.from ?? ''} onChange={(e) => set('smtp', 'from', e.target.value)} />
+          </Field>
+          <Field label="Enviar e-mail de teste para (opcional)">
+            <input className="input" type="email" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} />
+          </Field>
+          <div className="flex items-end">
+            <Toggle checked={!!s.smtp?.secure} onChange={(v) => set('smtp', 'secure', v)} label="SSL direto (porta 465)" />
+          </div>
         </Section>
 
         <Section icon={<Globe className="h-5 w-5" />} title="Geral" subtitle="Envio, descadastro e aparência">

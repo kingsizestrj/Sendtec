@@ -34,7 +34,7 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
     headers,
     body: opts.form ?? (opts.body !== undefined ? JSON.stringify(opts.body) : undefined),
   });
-  if (res.status === 401 && !path.startsWith('/auth/login')) {
+  if (res.status === 401 && !path.startsWith('/auth/')) {
     tokenStore.set(null);
     window.location.href = '/login';
   }

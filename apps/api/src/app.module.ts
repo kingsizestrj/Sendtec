@@ -28,6 +28,11 @@ import { OptOutsController } from './optouts/optouts.controller';
 import { DashboardController } from './dashboard/dashboard.controller';
 import { ResultsController } from './results/results.controller';
 import { SchedulerService } from './scheduler.service';
+import { AuditService } from './audit/audit.service';
+import { AuditController } from './audit/audit.controller';
+import { MailService } from './mail/mail.service';
+import { HealthService } from './health/health.service';
+import { HealthController } from './health/health.controller';
 
 const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist');
 
@@ -48,6 +53,8 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     OptOutsController,
     DashboardController,
     ResultsController,
+    AuditController,
+    HealthController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
@@ -64,6 +71,9 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     RecipientStatusService,
     CampaignsService,
     SchedulerService,
+    AuditService,
+    MailService,
+    HealthService,
   ],
 })
 export class AppModule {}

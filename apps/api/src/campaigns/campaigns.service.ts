@@ -131,6 +131,51 @@ export class CampaignsService {
     return this.get(id);
   }
 
+  /** Cria um rascunho igual a outra campanha (público, modelo, variáveis e imagem). */
+  async duplicate(id: string, userId: string) {
+    const c = await this.get(id);
+    return this.prisma.campaign.create({
+      data: {
+        name: `${c.name} (cópia)`,
+        templateId: c.templateId,
+        audience: c.audience as Prisma.InputJsonValue,
+        variables: c.variables as Prisma.InputJsonValue,
+        headerMediaUrl: c.headerMediaUrl,
+        respectOptOut: c.respectOptOut,
+        createdById: userId,
+      },
+    });
+  }
+
+  /** Tira o agendamento e volta para rascunho (sem perder a campanha). */
+  async unschedule(id: string) {
+    const c = await this.get(id);
+    if (c.status !== 'SCHEDULED') throw new BadRequestException('A campanha não está agendada');
+    return this.prisma.campaign.update({ where: { id }, data: { status: 'DRAFT', scheduledAt: null } });
+  }
+
+  /** Respostas dos clientes: contagem por botão de resposta rápida e últimas respostas. */
+  async replies(id: string) {
+    const c = await this.get(id);
+    const buttons: string[] = componentsInfo(c.template.components as any[])
+      .buttons.filter((b: any) => b.type === 'QUICK_REPLY')
+      .map((b: any) => String(b.text));
+    const rows = await this.prisma.campaignRecipient.findMany({
+      where: { campaignId: id, reply: { not: null } },
+      select: { name: true, phone: true, reply: true, repliedAt: true },
+      orderBy: { repliedAt: 'desc' },
+    });
+    const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    const byButton = buttons.map((text) => ({ text, count: rows.filter((r) => norm(r.reply!) === norm(text)).length }));
+    const matched = new Set(buttons.map(norm));
+    return {
+      total: rows.length,
+      buttons: byButton,
+      others: rows.filter((r) => !matched.has(norm(r.reply!))).length,
+      latest: rows.slice(0, 30),
+    };
+  }
+
   /** Envia a mensagem para um telefone de teste, com os dados reais de um cliente do público. */
   async sendTest(input: CampaignInput & { clientId: string; phone: string }) {
     const template = await this.validate(input);

@@ -8,6 +8,7 @@ import { MediaService } from '../media/media.service';
 import { VariablesConfig, VariablesService } from './variables.service';
 import { componentsInfo, renderText } from '../templates/template-utils';
 import { sleep } from '../common/text';
+import { normalizeBrPhone } from '../common/phone';
 import { IxcRecord } from '../ixc/ixc.client';
 
 const BATCH = 50;
@@ -127,6 +128,7 @@ export class CampaignRunner {
 
     await this.prisma.campaign.update({ where: { id: campaignId }, data: { status: 'COMPLETED', finishedAt: new Date() } });
     this.logger.log(`Campanha ${campaign.name} concluída`);
+    await this.notifyFinished(campaignId, campaign.name).catch((e) => this.logger.warn(`Aviso de conclusão não enviado: ${e.message}`));
   }
 
   /**
@@ -241,6 +243,48 @@ export class CampaignRunner {
     } catch (e: any) {
       await this.prisma.campaignRecipient.update({ where: { id: r.id }, data: { status: 'FAILED', error: String(e.message).slice(0, 500) } });
     }
+  }
+
+  private async notifyFinished(campaignId: string, name: string) {
+    const grouped = await this.prisma.campaignRecipient.groupBy({ by: ['status'], where: { campaignId }, _count: true });
+    const n = (s: string) => grouped.find((g) => g.status === s)?._count ?? 0;
+    const sent = n('SENT') + n('DELIVERED') + n('READ');
+    const fmt = (v: number) => v.toLocaleString('pt-BR');
+    await this.notify(
+      `a campanha "${name}" terminou com ${fmt(sent)} enviadas, ${fmt(n('FAILED'))} falhas e ${fmt(n('SKIPPED'))} ignoradas`,
+    );
+  }
+
+  /** Avisos para os administradores, por WhatsApp, usando o modelo de aviso escolhido em Configurações. */
+  async notify(text: string): Promise<{ sent: number; errors: string[] }> {
+    const general = await this.settings.get('general');
+    const phones = (general.notifyPhones ?? []).map((p) => normalizeBrPhone(p)).filter(Boolean) as string[];
+    if (!phones.length || !general.notifyTemplateId) return { sent: 0, errors: ['Configure os telefones e o modelo de aviso'] };
+    const template = await this.prisma.template.findUnique({ where: { id: general.notifyTemplateId } });
+    if (!template || template.status !== 'APPROVED') return { sent: 0, errors: ['O modelo de aviso não está aprovado pela Meta'] };
+    const value = text.replace(/\s+/g, ' ').slice(0, 900); // a Meta não aceita quebras de linha nos parâmetros
+    const headerUrl = await this.headerUrlFor(template).catch(() => null);
+    const errors: string[] = [];
+    let sent = 0;
+    for (const phone of phones) {
+      try {
+        await this.deliver({
+          template,
+          variables: { body: { '1': { source: 'fixo', value } } },
+          clientData: { id: 'aviso', razao: 'Sendtec' } as IxcRecord,
+          phone,
+          name: 'Avisos do Sendtec',
+          ixcId: 'aviso',
+          headerUrl,
+          labels: ['sendtec-aviso'],
+          attributes: { sendtec_campaign: 'Aviso do Sendtec' },
+        });
+        sent++;
+      } catch (e: any) {
+        errors.push(`${phone}: ${e.message}`);
+      }
+    }
+    return { sent, errors };
   }
 
   /** Após reinício do servidor: destrava envios interrompidos e retoma campanhas em andamento. */

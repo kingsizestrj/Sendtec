@@ -4,6 +4,7 @@ import { CampaignRunner } from './campaigns/campaign-runner.service';
 import { TemplatesService } from './templates/templates.service';
 import { SettingsService } from './settings/settings.service';
 import { RecipientStatusService } from './campaigns/recipient-status.service';
+import { HealthService } from './health/health.service';
 
 /**
  * Tarefas periódicas:
@@ -23,6 +24,7 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     private templates: TemplatesService,
     private settings: SettingsService,
     private statuses: RecipientStatusService,
+    private health: HealthService,
   ) {}
 
   async onApplicationBootstrap() {
@@ -31,6 +33,9 @@ export class SchedulerService implements OnApplicationBootstrap, OnModuleDestroy
     this.timers.push(setInterval(() => this.tickTemplates().catch((e) => this.logger.warn(e.message)), 60_000));
     // entregas e leituras: confere no Chatwoot a cada minuto (independe do webhook)
     this.timers.push(setInterval(() => this.statuses.poll().catch((e) => this.logger.warn(e.message)), 60_000));
+    // saúde das integrações: na subida e a cada 5 minutos
+    this.health.check().catch(() => undefined);
+    this.timers.push(setInterval(() => this.health.check().catch(() => undefined), 5 * 60_000));
   }
 
   onModuleDestroy() {

@@ -31,6 +31,17 @@ export interface GeneralSettings {
   optOutKeywords: string[];
   optOutReply: string;
   mapCenter: [number, number]; // [lat, lng]
+  notifyPhones: string[]; // WhatsApp que recebem o resumo quando uma campanha termina
+  notifyTemplateId: string; // modelo de utilidade com {{1}} usado nesses avisos
+}
+
+export interface SmtpSettings {
+  host: string;
+  port: number;
+  secure: boolean; // SSL direto (porta 465)
+  user: string;
+  pass: string;
+  from: string; // ex.: "Sendtec <sendtec@seuprovedor.com.br>"
 }
 
 export interface AllSettings {
@@ -38,6 +49,7 @@ export interface AllSettings {
   chatwoot: ChatwootSettings;
   meta: MetaSettings;
   general: GeneralSettings;
+  smtp: SmtpSettings;
 }
 
 export const DEFAULT_SETTINGS: AllSettings = {
@@ -51,7 +63,10 @@ export const DEFAULT_SETTINGS: AllSettings = {
     optOutKeywords: ['SAIR', 'PARAR', 'STOP', 'CANCELAR', 'DESCADASTRAR'],
     optOutReply: 'Pronto! Você não receberá mais nossas mensagens promocionais. 💜',
     mapCenter: [-15.78, -47.93],
+    notifyPhones: [],
+    notifyTemplateId: '',
   },
+  smtp: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
 };
 
 /** Campos que nunca são devolvidos para o navegador em texto puro. */
@@ -60,4 +75,5 @@ export const SECRET_FIELDS: Record<keyof AllSettings, string[]> = {
   chatwoot: ['apiToken'],
   meta: ['accessToken'],
   general: [],
+  smtp: ['pass'],
 };

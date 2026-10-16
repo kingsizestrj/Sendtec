@@ -11,6 +11,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <title>Sendtec</title>
+    <script>
+      // aplica o tema salvo antes de desenhar a página (evita piscar)
+      try { if (localStorage.getItem('sendtec_theme') === 'light') document.documentElement.classList.add('light'); } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -156,14 +156,20 @@ Confira:
 
 ---
 
+## 9. Recursos opcionais
+
+- [ ] **Avisos por WhatsApp** (Configurações → Avisos): informe os números que recebem o resumo quando uma campanha termina e clique em **Criar** para mandar o modelo `sendtec_aviso` para aprovação. Depois de aprovado, selecione-o e use **Testar conexão**.
+- [ ] **E-mail (SMTP)** (Configurações → E-mail): necessário para o "Esqueci minha senha". No Gmail/Google Workspace, use uma *senha de app*. Teste enviando um e-mail para você.
+
+---
+
 ## Manutenção
 
 - **Atualizar** para uma versão nova:
   ```bash
   cd sendtec && git pull && docker compose up -d --build
   ```
-- **Backup do banco**:
-  ```bash
-  docker compose exec db pg_dump -U sendtec sendtec > backup-$(date +%F).sql
-  ```
+- **Backup do banco**: automático, todo dia às 3h (horário de Brasília), na pasta `backups/` ao lado do `docker-compose.yml`, guardando os últimos 14 dias (`BACKUP_HOUR` e `BACKUP_KEEP_DAYS` no `.env`). Copie essa pasta para fora do servidor de vez em quando.
+  - Backup na hora: `docker compose exec db pg_dump -U sendtec sendtec | gzip > backups/manual-$(date +%F).sql.gz`
+  - Restaurar: `gunzip -c backups/sendtec-AAAA-MM-DD.sql.gz | docker compose exec -T db psql -U sendtec sendtec`
 - **Ver os logs**: `docker compose logs -f app`

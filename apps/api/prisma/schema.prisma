@@ -120,11 +120,15 @@ model CampaignRecipient {
   sentAt                 DateTime?
   deliveredAt            DateTime?
   readAt                 DateTime?
+  reply                  String?
+  repliedAt              DateTime?
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
 
   @@unique([campaignId, phone])
   @@index([chatwootMessageId])
+  @@index([chatwootConversationId])
+  @@index([phone])
   @@index([campaignId, status])
 }
 
@@ -134,4 +138,28 @@ model OptOut {
   reason    String?
   source    String   @default("manual")
   createdAt DateTime @default(now())
+}
+
+// Registro de atividades: quem fez o quê
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  userName  String
+  action    String
+  entity    String?
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Pedidos de "esqueci minha senha" (guarda só o hash do token)
+model PasswordReset {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
 }

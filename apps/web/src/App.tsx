@@ -14,6 +14,8 @@ import { OptOutsPage } from './pages/OptOuts';
 import { UsersPage } from './pages/Users';
 import { SettingsPage } from './pages/Settings';
 import { ResultsPage } from './pages/Results';
+import { ActivitiesPage } from './pages/Activities';
+import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordReset';
 
 function Protected({ children, admin }: { children: ReactNode; admin?: boolean }) {
   const { user, loading } = useAuth();
@@ -35,6 +37,8 @@ export function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
+            <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
             <Route
               element={
                 <Protected>
@@ -52,6 +56,7 @@ export function App() {
               <Route path="resultados" element={<ResultsPage />} />
               <Route path="descadastros" element={<OptOutsPage />} />
               <Route path="usuarios" element={<Protected admin><UsersPage /></Protected>} />
+              <Route path="atividades" element={<Protected admin><ActivitiesPage /></Protected>} />
               <Route path="configuracoes" element={<Protected admin><SettingsPage /></Protected>} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
