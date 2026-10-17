@@ -6,7 +6,8 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { fmtNumber, fmtPhone, localMedia } from '../lib/format';
 import { templateInfo } from '../lib/template';
-import type { Area, AudienceFilter, AudienceResult, Campaign, Catalog, CsvAudience, Template, VariableMapping, VariablesConfig } from '../lib/types';
+import type { Area, AudienceFilter, AudienceResult, Campaign, Catalog, CsvAudience, Roteiro, Template, VariableMapping, VariablesConfig } from '../lib/types';
+import { EMPTY_SCRIPT, ScriptEditor, scriptFromServer, scriptProblem, useScriptDefaults } from '../components/ScriptEditor';
 import { AudienceMap, MapPoint } from '../components/AudienceMap';
 import { FilterBuilder } from '../components/FilterBuilder';
 import { CsvUploader } from '../components/CsvUploader';
@@ -17,7 +18,7 @@ import { QUALITY, useNumberHealth } from '../components/NumberHealth';
 import { PhonePreview } from '../components/PhonePreview';
 import { Button, Card, Field, PageHeader, Spinner, StatusBadge, Toggle, useToast } from '../components/ui';
 
-const STEPS = ['Modelo', 'Público', 'Personalização', 'Revisão'];
+const STEPS = ['Modelo', 'Público', 'Personalização', 'Roteiro da IA', 'Revisão'];
 export function CampaignNewPage() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -51,6 +52,15 @@ export function CampaignNewPage() {
   const [saving, setSaving] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [testOpen, setTestOpen] = useState(false);
+  const scriptDefaults = useScriptDefaults();
+  const [scriptOn, setScriptOn] = useState<boolean | null>(null); // null = ainda não decidido (usa o padrão da integração)
+  const [script, setScript] = useState<Roteiro>(EMPTY_SCRIPT);
+  const useScript = scriptOn ?? !!scriptDefaults?.enabled;
+  const scriptFinal = { ...script, nome: script.nome.trim() || name.trim() }; // sem nome, usa o da campanha
+  // validade padrão e nome do roteiro para campanhas novas
+  useEffect(() => {
+    if (scriptDefaults?.validUntil) setScript((s) => (s.valido_ate || s.instrucoes ? s : { ...s, valido_ate: scriptDefaults.validUntil }));
+  }, [scriptDefaults]);
   const health = useNumberHealth();
 
   useEffect(() => {
@@ -68,6 +78,9 @@ export function CampaignNewPage() {
         setVariables({ body: c.variables.body ?? {}, buttons: c.variables.buttons ?? {} });
         setHeaderUrl(c.headerMediaUrl);
         setRespectOptOut(c.respectOptOut);
+        const sc = scriptFromServer(c.script);
+        setScriptOn(!!sc);
+        if (sc) setScript(sc);
         setLoaded(true);
       });
   }, [id]);
@@ -163,6 +176,7 @@ export function CampaignNewPage() {
     !!name.trim() && template?.status === 'APPROVED',
     (audience?.stats.selected ?? 0) > 0 && !loadingAudience,
     varsOk && (info.headerFormat !== 'IMAGE' || !!headerUrl || !!template?.headerMediaUrl),
+    !useScript || !scriptProblem(scriptFinal),
     true,
   ][step];
 
@@ -178,7 +192,15 @@ export function CampaignNewPage() {
     }
   };
 
-  const payload = { name, templateId, audience: spec, variables, headerMediaUrl: headerUrl, respectOptOut: isMarketing ? true : respectOptOut };
+  const payload = {
+    name,
+    templateId,
+    audience: spec,
+    variables,
+    headerMediaUrl: headerUrl,
+    respectOptOut: isMarketing ? true : respectOptOut,
+    script: useScript ? scriptFinal : null,
+  };
 
   // aviso de limite diário e de qualidade do número (Meta)
   const numberWarnings = (() => {
@@ -540,6 +562,31 @@ export function CampaignNewPage() {
       )}
 
       {step === 3 && (
+        <Card className="space-y-5 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h3 className="font-bold">Roteiro da IA de atendimento</h3>
+              <p className="mt-1 max-w-2xl text-sm text-ink-300">
+                Como a IA deve responder quem reagir a esta campanha. Ele é gravado no sistema de atendimento pela etiqueta da campanha antes do disparo.
+              </p>
+            </div>
+            <Toggle checked={useScript} onChange={setScriptOn} label="Criar roteiro" />
+          </div>
+          {!scriptDefaults?.enabled && useScript && (
+            <div className="rounded-xl bg-amber-500/10 p-3 text-sm text-amber-200">
+              A integração com o sistema de atendimento não está configurada (Configurações → Atendimento com IA). O roteiro fica salvo aqui, mas não é enviado.
+            </div>
+          )}
+          {useScript ? (
+            <ScriptEditor value={script} onChange={setScript} context={{ campaignName: name, templateId }} />
+          ) : (
+            <p className="text-sm text-ink-400">Sem roteiro, quem responder à campanha cai no atendimento normal da IA.</p>
+          )}
+          {useScript && scriptProblem(scriptFinal) && <p className="text-xs text-amber-300">{scriptProblem(scriptFinal)}</p>}
+        </Card>
+      )}
+
+      {step === 4 && (
         <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
           <div className="space-y-6">
             <Card className="grid gap-4 p-6 sm:grid-cols-3">
@@ -557,6 +604,23 @@ export function CampaignNewPage() {
                   <Users className="h-5 w-5 text-fuchsia-300" /> {fmtNumber(audience?.stats.selected)}
                 </div>
               </div>
+            </Card>
+
+            <Card className="flex flex-wrap items-center justify-between gap-3 p-5 text-sm">
+              <div>
+                <div className="label">Roteiro da IA</div>
+                {useScript ? (
+                  <span>
+                    <b>{script.nome || name}</b> · equipe {script.equipe} · {script.valido_ate ? `válido até ${script.valido_ate.split('-').reverse().join('/')}` : 'sem prazo'}
+                    {!script.ativo && ' · inativo'}
+                  </span>
+                ) : (
+                  <span className="text-ink-400">Sem roteiro: quem responder cai no atendimento normal</span>
+                )}
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setStep(3)}>
+                Alterar
+              </Button>
             </Card>
 
             <Card className="space-y-5 p-6">
@@ -638,7 +702,7 @@ export function CampaignNewPage() {
 
       <TestSendModal open={testOpen} onClose={() => setTestOpen(false)} clients={audience?.selected ?? []} payload={payload} />
 
-      {step < 3 && (
+      {step < 4 && (
         <div className="mt-8 flex justify-between">
           <Button variant="ghost" disabled={step === 0} onClick={() => setStep(step - 1)} icon={<ArrowLeft className="h-4 w-4" />}>
             Anterior

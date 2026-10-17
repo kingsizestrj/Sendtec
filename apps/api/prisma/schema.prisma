@@ -97,8 +97,14 @@ model Campaign {
   automation       Automation?     @relation(fields: [automationId], references: [id], onDelete: SetNull)
   automationStepId String?
   automationStep   AutomationStep? @relation(fields: [automationStepId], references: [id], onDelete: SetNull)
+  // código fixo: a etiqueta no Chatwoot é <prefixo>-<code> e é a chave do roteiro da IA de atendimento
+  code           String?
+  script         Json?     // roteiro da IA de atendimento (nome, instrucoes, oferta, duvidas…)
+  scriptSyncedAt DateTime?
+  scriptError    String?
 
   @@index([automationStepId])
+  @@index([code])
 }
 
 enum RecipientStatus {
@@ -192,6 +198,10 @@ model Automation {
   name        String
   active      Boolean          @default(false)
   weekdays    Int[]            @default([1, 2, 3, 4, 5, 6]) // 0 = domingo
+  code        String?          @unique // as etapas usam <code>-<etapa>
+  script      Json?            // roteiro geral: vale para as etapas sem roteiro próprio
+  scriptSyncedAt DateTime?
+  scriptError String?
   createdById String
   createdBy   User             @relation(fields: [createdById], references: [id])
   createdAt   DateTime         @default(now())
@@ -215,6 +225,8 @@ model AutomationStep {
   variables       Json
   headerMediaUrl  String?
   cooldownDays    Int            @default(7) // não reenviar esta etapa para quem recebeu nos últimos N dias
+  code            String?        // <code da régua>-<etapa>, fixo mesmo se a etapa for renomeada
+  script          Json?          // roteiro próprio da etapa (opcional)
   lastRunDate     String?        // "2026-10-16" (data local da última execução)
   lastResult      String?
   campaigns       Campaign[]

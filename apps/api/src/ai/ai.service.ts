@@ -130,6 +130,23 @@ const RULES = `Regras da Meta para modelos de WhatsApp (siga todas):
 
 const IMAGE_HINT = `A imagem anexada é o cabeçalho do modelo. Leia o que ela mostra (texto escrito, preço, plano, datas, promoção). O texto deve complementar a arte, sem repetir tudo o que já está escrito nela e sem contradizê-la (mesmo preço, mesmo plano, mesmas datas). Se a arte for promocional, a categoria é MARKETING. Não use headerText (o cabeçalho é a imagem).`;
 
+const SCRIPT_SCHEMA = {
+  type: 'object',
+  properties: {
+    nome: { type: 'string' },
+    instrucoes: { type: 'string' },
+    oferta: { type: ['string', 'null'] },
+    duvidas: {
+      type: 'array',
+      items: { type: 'object', properties: { pergunta: { type: 'string' }, resposta: { type: 'string' } }, required: ['pergunta', 'resposta'], additionalProperties: false },
+    },
+    quando_humano: { type: ['string', 'null'] },
+    equipe: { type: 'string', enum: ['vendas', 'suporte', 'financeiro'] },
+  },
+  required: ['nome', 'instrucoes', 'oferta', 'duvidas', 'quando_humano', 'equipe'],
+  additionalProperties: false,
+};
+
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
@@ -273,6 +290,48 @@ Explique em português simples, para alguém que não é técnico, o que provave
     const improved = this.normalize(data.improved);
     if (img.block) improved.headerText = null;
     return { ...data, imageAdvice: img.block ? data.imageAdvice : null, improved, issues: [...draftIssues(improved), ...img.issues], usage };
+  }
+
+  /** Rascunho do roteiro que a IA de atendimento segue com quem responder à campanha. */
+  async generateScript(input: { campaignName: string; templateText?: string | null; category?: string | null; objective?: string | null; offer?: string | null }) {
+    const general = await this.settings.get('general');
+    const ai = await this.settings.get('ai');
+    const system = `Você escreve roteiros para a IA de atendimento no WhatsApp de um provedor de internet brasileiro (${general.companyName}).
+O roteiro orienta a IA a responder clientes que reagirem a uma campanha. Tom da marca: ${ai.brandTone || 'próximo, claro e respeitoso'}.
+Regras para o roteiro:
+- A IA de campanha só explica, tira dúvidas e transfere para a equipe escolhida. Nunca escreva que ela fecha venda, faz upgrade, abre OS, gera boleto ou altera cadastro.
+- Não repita regras fixas que o sistema já aplica (não inventar preço, voltar ao atendimento normal se o cliente mudar de assunto, orientar sobre o SAIR).
+- "oferta" é a ÚNICA fonte de preço, condição e validade que a IA pode citar. Use só o que foi informado no texto da campanha ou nas observações. Se faltar preço, condição ou validade, escreva no lugar exato "[PREENCHA: …]" dizendo o que falta. Se a campanha não tiver oferta (aviso, cobrança), oferta = null.
+- "instrucoes": objetivo da campanha, tom e como conduzir a conversa, em tópicos curtos (até ~1500 caracteres).
+- "duvidas": 4 a 8 perguntas que clientes provavelmente farão, com respostas curtas e corretas. Nada de dados que não foram informados; quando não souber, a resposta é transferir para a equipe.
+- "quando_humano": situações que vão direto para uma pessoa (reclamação, cancelamento, cliente irritado, pedido de negociação…).
+- "equipe": vendas para ofertas e upgrades, financeiro para cobrança, suporte para avisos técnicos e manutenção.
+- "nome": curto e descritivo (até 60 caracteres).
+Escreva em português do Brasil.`;
+    const prompt = `Campanha: ${input.campaignName || 'sem nome'}
+Categoria do modelo: ${input.category ?? 'não informada'}
+Mensagem que o cliente vai receber:
+<mensagem>
+${input.templateText?.trim() || '(não informada)'}
+</mensagem>
+${input.objective?.trim() ? `Objetivo e observações de quem criou a campanha:\n<observacoes>\n${input.objective.trim().slice(0, 2000)}\n</observacoes>\n` : ''}${input.offer?.trim() ? `Oferta informada (use exatamente estes dados):\n<oferta>\n${input.offer.trim().slice(0, 2000)}\n</oferta>\n` : ''}
+Escreva o roteiro.`;
+    const { data, usage } = await this.call<{ nome: string; instrucoes: string; oferta: string | null; duvidas: { pergunta: string; resposta: string }[]; quando_humano: string | null; equipe: 'vendas' | 'suporte' | 'financeiro' }>(
+      system,
+      prompt,
+      SCRIPT_SCHEMA,
+      'medium',
+    );
+    const cut = (t: string | null | undefined, n: number) => (t ? t.trim().slice(0, n) : null);
+    const script = {
+      nome: cut(data.nome, 120) ?? input.campaignName.slice(0, 120),
+      instrucoes: cut(data.instrucoes, 8000) ?? '',
+      oferta: cut(data.oferta, 4000),
+      duvidas: (data.duvidas ?? []).slice(0, 30).map((d) => ({ pergunta: d.pergunta.trim().slice(0, 300), resposta: d.resposta.trim().slice(0, 1000) })),
+      quando_humano: cut(data.quando_humano, 2000),
+      equipe: ['vendas', 'suporte', 'financeiro'].includes(data.equipe) ? data.equipe : 'vendas',
+    };
+    return { script, usage };
   }
 
   /** Ajusta o que a IA devolveu ao formato que o formulário e a Meta aceitam. */

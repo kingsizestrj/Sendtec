@@ -160,6 +160,7 @@ Confira:
 
 - [ ] **Avisos por WhatsApp** (Configurações → Avisos): informe os números que recebem o resumo quando uma campanha termina e clique em **Criar** para mandar o modelo `sendtec_aviso` para aprovação. Depois de aprovado, selecione-o e use **Testar conexão**.
 - [ ] **Inteligência artificial** (Configurações → Inteligência artificial): crie uma chave em console.anthropic.com → API Keys (a conta precisa de créditos; US$ 5 rendem centenas de usos com o Haiku), cole no Sendtec, ajuste o **tom da marca** e clique em **Testar conexão**. O servidor precisa acessar `api.anthropic.com` (HTTPS). O custo de cada uso aparece na tela e no registro de Atividades.
+- [ ] **Atendimento com IA (roteiros)** (Configurações → Atendimento com IA): informe o endereço da API de roteiros do seu sistema de conversas (sem o código no final) e o token, e clique em **Testar conexão** (ele grava e desativa o roteiro `teste-sendtec-01`). Mantenha o prefixo da etiqueta do Chatwoot como `campanha`. A partir daí, cada campanha ganha a etapa **Roteiro da IA** e só é disparada depois que o roteiro for gravado.
 - [ ] **E-mail (SMTP)** (Configurações → E-mail): necessário para o "Esqueci minha senha". No Gmail/Google Workspace, use uma *senha de app*. Teste enviando um e-mail para você.
 
 ---

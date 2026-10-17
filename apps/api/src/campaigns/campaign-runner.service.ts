@@ -5,6 +5,7 @@ import { ChatwootClient } from '../chatwoot/chatwoot.client';
 import { SettingsService } from '../settings/settings.service';
 import { AudienceService, AudienceSpec } from '../ixc/audience.service';
 import { MediaService } from '../media/media.service';
+import { RoteirosService } from '../roteiros/roteiros.service';
 import { VariablesConfig, VariablesService } from './variables.service';
 import { componentsInfo, renderText } from '../templates/template-utils';
 import { sleep } from '../common/text';
@@ -40,6 +41,7 @@ export class CampaignRunner {
     private audience: AudienceService,
     private variables: VariablesService,
     private media: MediaService,
+    private roteiros: RoteirosService,
   ) {}
 
   isRunning(id: string) {
@@ -118,6 +120,8 @@ export class CampaignRunner {
   private async run(campaignId: string) {
     const campaign = await this.prisma.campaign.findUniqueOrThrow({ where: { id: campaignId }, include: { template: true } });
     if (campaign.template.status !== 'APPROVED') throw new Error(`O modelo ${campaign.template.name} não está aprovado (${campaign.template.status})`);
+    // sem roteiro gravado o cliente que responder cai no atendimento normal: não dispara
+    if (campaign.script) await this.roteiros.syncCampaign(campaignId, true);
 
     await this.prisma.campaign.update({
       where: { id: campaignId },
@@ -130,7 +134,7 @@ export class CampaignRunner {
     const cw = await this.settings.get('chatwoot');
     const rate = Math.max(0.2, Number(general.sendRatePerSecond) || 5);
     const interval = 1000 / rate;
-    const label = `${cw.labelPrefix || 'campanha'}-${slug(campaign.name)}`;
+    const label = `${cw.labelPrefix || 'campanha'}-${campaign.code ?? slug(campaign.name)}`;
     const headerUrl = await this.headerUrlFor(campaign.template, campaign.headerMediaUrl);
 
     for (;;) {

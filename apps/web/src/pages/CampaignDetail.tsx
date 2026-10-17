@@ -7,6 +7,7 @@ import { useAuth } from '../lib/auth';
 import { fmtDateTime, fmtNumber, fmtPhone, pct } from '../lib/format';
 import type { Campaign, Recipient } from '../lib/types';
 import { AudienceMap, MapPoint } from '../components/AudienceMap';
+import { CampaignScriptCard } from '../components/CampaignScriptCard';
 import { Button, Card, PageHeader, Spinner, Stat, StatusBadge, useToast } from '../components/ui';
 
 const COLORS: Record<string, string> = {
@@ -194,6 +195,8 @@ export function CampaignDetailPage() {
           <AlertTriangle className="h-5 w-5 shrink-0" /> {c.error}
         </div>
       )}
+
+      <CampaignScriptCard campaign={c} onChange={load} />
 
       {total > 0 && (
         <Card className="mb-6 p-5">

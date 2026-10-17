@@ -1,4 +1,4 @@
-import { BellRing, CheckCircle2, Copy, Database, Globe, Mail, MessagesSquare, PlugZap, Save, Sparkles, XCircle } from 'lucide-react';
+import { Bot, BellRing, CheckCircle2, Copy, Database, Globe, Mail, MessagesSquare, PlugZap, Save, Sparkles, XCircle } from 'lucide-react';
 import type { Template } from '../lib/types';
 import { UpdatePanel } from '../components/UpdatePanel';
 import { ReactNode, useEffect, useState } from 'react';
@@ -84,6 +84,7 @@ export function SettingsPage() {
       await api('/settings', { method: 'PUT', body: s });
       const r = await api('/settings/test', { body: { target, email: target === 'smtp' ? testEmail : undefined } });
       let message = r.error;
+      if (r.ok && target === 'roteiros') message = 'Conectado! Roteiro de teste gravado e desativado no sistema de atendimento.';
       if (r.ok && target === 'ai') message = `Conectado! A IA está pronta (${r.model}).`;
       if (r.ok && target === 'ixc') message = `Conectado! ${r.totalClientes.toLocaleString('pt-BR')} clientes no IXC.`;
       if (r.ok && target === 'smtp') message = testEmail ? `Conectado! E-mail de teste enviado para ${testEmail}.` : 'Conectado ao servidor de e-mail.';
@@ -282,6 +283,32 @@ export function SettingsPage() {
           <Field label="Tom da marca" className="md:col-span-2" hint="Como a sua empresa conversa com os clientes. A IA segue isso em todas as versões.">
             <textarea className="input min-h-[80px] resize-y" maxLength={600} value={s.ai?.brandTone ?? ''} onChange={(e) => set('ai', 'brandTone', e.target.value)} />
           </Field>
+        </Section>
+
+        <Section
+          icon={<Bot className="h-5 w-5" />}
+          title="Atendimento com IA (roteiros)"
+          subtitle="Grava no seu sistema de conversas o roteiro que a IA segue com quem responder a cada campanha"
+          onTest={() => test('roteiros')}
+          testing={testing === 'roteiros'}
+          result={results.roteiros}
+        >
+          <Field label="Endereço da API de roteiros" className="md:col-span-2" hint="Sem o código no final. Ex.: https://chat.seuprovedor.com.br/painel/integracao/sendtec/roteiros">
+            <input className="input" value={s.roteiros?.url ?? ''} onChange={(e) => set('roteiros', 'url', e.target.value.trim())} />
+          </Field>
+          <Field label="Token" hint="Enviado como Authorization: Bearer. Fica guardado criptografado neste servidor.">
+            <input className="input" type="password" value={s.roteiros?.token ?? ''} onChange={(e) => set('roteiros', 'token', e.target.value)} />
+          </Field>
+          <Field label="Validade padrão do roteiro" hint="Dias depois da criação da campanha (dá para mudar em cada campanha)">
+            <div className="flex items-center gap-2">
+              <input className="input w-24" type="number" min={1} max={365} value={s.roteiros?.validityDays ?? 15} onChange={(e) => set('roteiros', 'validityDays', Number(e.target.value))} />
+              <span className="text-sm text-ink-300">dias</span>
+            </div>
+          </Field>
+          <p className="text-xs text-ink-400 md:col-span-2">
+            A etiqueta das conversas passa a ser <span className="font-mono">{s.chatwoot.labelPrefix || 'campanha'}-&lt;código da campanha&gt;</span>, fixa mesmo se a campanha for renomeada. Mantenha o prefixo
+            da etiqueta (em Chatwoot) como <span className="font-mono">campanha</span>.
+          </p>
         </Section>
 
         <Section icon={<Globe className="h-5 w-5" />} title="Geral" subtitle="Envio, descadastro e aparência">

@@ -46,6 +46,12 @@ export interface AiSettings {
   brandTone: string; // como a empresa fala com os clientes
 }
 
+export interface RoteirosSettings {
+  url: string; // endereço base, ex.: https://chat.seuprovedor.com.br/painel/integracao/sendtec/roteiros
+  token: string; // Authorization: Bearer
+  validityDays: number; // validade padrão do roteiro, em dias após o disparo
+}
+
 export interface SmtpSettings {
   host: string;
   port: number;
@@ -63,6 +69,7 @@ export interface AllSettings {
   smtp: SmtpSettings;
   lgpd: LgpdSettings;
   ai: AiSettings;
+  roteiros: RoteirosSettings;
 }
 
 export const DEFAULT_SETTINGS: AllSettings = {
@@ -82,6 +89,7 @@ export const DEFAULT_SETTINGS: AllSettings = {
   },
   lgpd: { retentionMonths: 0 },
   ai: { apiKey: '', model: 'claude-haiku-5-5', brandTone: 'Próximo e simpático, como um vizinho que entende de internet. Frases curtas, linguagem simples, no máximo 2 emojis.' },
+  roteiros: { url: '', token: '', validityDays: 15 },
   smtp: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
 };
 
@@ -94,4 +102,5 @@ export const SECRET_FIELDS: Record<keyof AllSettings, string[]> = {
   smtp: ['pass'],
   lgpd: [],
   ai: ['apiKey'],
+  roteiros: ['token'],
 };

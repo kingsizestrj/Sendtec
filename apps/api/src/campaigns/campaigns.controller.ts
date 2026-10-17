@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { Roteiro } from '../roteiros/roteiros.service';
 import { AuthUser, CurrentUser } from '../auth/decorators';
 import { AuditService } from '../audit/audit.service';
 import { CampaignInput, CampaignsService } from './campaigns.service';
@@ -85,6 +86,21 @@ export class CampaignsController {
   @Post(':id/retry-failed')
   retry(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.logged(user, 'Reenviou falhas da campanha', id, this.campaigns.retryFailed(id) as Promise<{ id?: string }>);
+  }
+
+  @Get(':id/script')
+  script(@Param('id') id: string) {
+    return this.campaigns.scriptStatus(id);
+  }
+
+  @Post(':id/script/sync')
+  scriptSync(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.logged(user, 'Reenviou o roteiro da IA', id, this.campaigns.scriptStatus(id, true) as Promise<{ id?: string }>);
+  }
+
+  @Put(':id/script')
+  updateScript(@Param('id') id: string, @Body() body: { script: Roteiro | null }, @CurrentUser() user: AuthUser) {
+    return this.logged(user, body?.script ? 'Editou o roteiro da IA' : 'Removeu o roteiro da IA', id, this.campaigns.updateScript(id, body?.script ?? null));
   }
 
   @Get(':id/recipients')

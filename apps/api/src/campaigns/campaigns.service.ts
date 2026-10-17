@@ -7,6 +7,8 @@ import { normalizeBrPhone } from '../common/phone';
 import { AudienceSpec } from '../ixc/audience.service';
 import { VariablesConfig } from './variables.service';
 import { componentsInfo } from '../templates/template-utils';
+import { Roteiro, RoteirosService } from '../roteiros/roteiros.service';
+import { newCode } from '../common/code';
 
 export interface CampaignInput {
   name: string;
@@ -16,13 +18,23 @@ export interface CampaignInput {
   headerMediaUrl?: string | null;
   respectOptOut?: boolean;
   scheduledAt?: string | null;
+  script?: Roteiro | null; // roteiro da IA de atendimento (opcional)
 }
 
 const EDITABLE = ['DRAFT', 'SCHEDULED'];
 
 @Injectable()
 export class CampaignsService {
-  constructor(private prisma: PrismaService, private runner: CampaignRunner, private audience: AudienceService) {}
+  constructor(private prisma: PrismaService, private runner: CampaignRunner, private audience: AudienceService, private roteiros: RoteirosService) {}
+
+  /** Código fixo e único: vira a etiqueta campanha-<código> e a chave do roteiro. */
+  private async uniqueCode(name: string) {
+    for (;;) {
+      const code = newCode(name);
+      const used = (await this.prisma.campaign.count({ where: { code } })) + (await this.prisma.automation.count({ where: { code } }));
+      if (!used) return code;
+    }
+  }
 
   private async counts(campaignIds: string[]) {
     const grouped = await this.prisma.campaignRecipient.groupBy({
@@ -97,14 +109,46 @@ export class CampaignsService {
 
   async create(input: CampaignInput, userId: string) {
     await this.validate(input);
-    return this.prisma.campaign.create({ data: { ...this.data(input), createdById: userId } });
+    const script = await this.roteiros.prepare(input.script);
+    const c = await this.prisma.campaign.create({
+      data: { ...this.data(input), code: await this.uniqueCode(input.name), script: this.roteiros.json(script), createdById: userId },
+    });
+    await this.roteiros.syncCampaign(c.id);
+    return this.get(c.id);
   }
 
   async update(id: string, input: CampaignInput) {
     const c = await this.get(id);
     if (!EDITABLE.includes(c.status)) throw new BadRequestException('Só é possível editar campanhas em rascunho ou agendadas');
     await this.validate(input);
-    return this.prisma.campaign.update({ where: { id }, data: { ...this.data(input), status: 'DRAFT', scheduledAt: null } });
+    const script = await this.roteiros.prepare(input.script);
+    const hadScript = !!c.script;
+    await this.prisma.campaign.update({
+      where: { id },
+      data: { ...this.data(input), code: c.code ?? (await this.uniqueCode(input.name)), script: this.roteiros.json(script), scriptError: null, status: 'DRAFT', scheduledAt: null },
+    });
+    if (script) await this.roteiros.syncCampaign(id);
+    else if (hadScript) await this.roteiros.deactivateCampaign(c);
+    return this.get(id);
+  }
+
+  /** Edita só o roteiro (também depois do disparo, para ajustar as respostas da IA). */
+  async updateScript(id: string, input: Roteiro | null) {
+    const c = await this.get(id);
+    if (c.status === 'CANCELLED') throw new BadRequestException('A campanha foi cancelada');
+    const script = await this.roteiros.prepare(input);
+    await this.prisma.campaign.update({ where: { id }, data: { code: c.code ?? (await this.uniqueCode(c.name)), script: this.roteiros.json(script), scriptError: null } });
+    if (script) await this.roteiros.syncCampaign(id, true);
+    else await this.roteiros.deactivateCampaign(c);
+    return this.get(id);
+  }
+
+  /** Reenvia o roteiro e mostra como ele está guardado no sistema de atendimento. */
+  async scriptStatus(id: string, resend = false) {
+    const c = await this.get(id);
+    if (resend) await this.roteiros.syncCampaign(id, true);
+    const remote = c.code && (await this.roteiros.enabled()) ? await this.roteiros.get(c.code) : null;
+    return { code: c.code, remote, campaign: await this.get(id) };
   }
 
   async remove(id: string) {
@@ -113,7 +157,8 @@ export class CampaignsService {
       throw new BadRequestException('Pause ou cancele a campanha antes de excluir');
     }
     await this.prisma.campaign.delete({ where: { id } });
-    return { ok: true };
+    const scriptWarning = await this.roteiros.deactivateCampaign(c);
+    return { ok: true, scriptWarning };
   }
 
   /** Dispara agora ou agenda para scheduledAt. */
@@ -121,6 +166,9 @@ export class CampaignsService {
     const c = await this.get(id);
     if (!EDITABLE.includes(c.status)) throw new BadRequestException('Esta campanha já foi iniciada');
     if (c.template.status !== 'APPROVED') throw new BadRequestException(`O modelo ainda não está aprovado pela Meta (${c.template.status})`);
+    if (!c.code) await this.prisma.campaign.update({ where: { id }, data: { code: await this.uniqueCode(c.name) } });
+    // só dispara (ou agenda) com o roteiro gravado; no agendamento ele é enviado de novo antes do disparo
+    await this.roteiros.syncCampaign(id, true);
     if (scheduledAt) {
       const when = new Date(scheduledAt);
       if (Number.isNaN(when.getTime()) || when.getTime() < Date.now() - 60000) throw new BadRequestException('Data de agendamento inválida');
@@ -142,6 +190,8 @@ export class CampaignsService {
         variables: c.variables as Prisma.InputJsonValue,
         headerMediaUrl: c.headerMediaUrl,
         respectOptOut: c.respectOptOut,
+        code: await this.uniqueCode(c.name),
+        script: c.script ? (c.script as Prisma.InputJsonValue) : Prisma.DbNull,
         createdById: userId,
       },
     });
@@ -226,7 +276,10 @@ export class CampaignsService {
       where: { campaignId: id, status: 'PENDING' },
       data: { status: 'SKIPPED', error: 'Campanha cancelada' },
     });
-    return this.prisma.campaign.update({ where: { id }, data: { status: 'CANCELLED', finishedAt: new Date(), scheduledAt: null } });
+    await this.prisma.campaign.update({ where: { id }, data: { status: 'CANCELLED', finishedAt: new Date(), scheduledAt: null } });
+    const scriptError = await this.roteiros.deactivateCampaign(c);
+    if (scriptError) await this.prisma.campaign.update({ where: { id }, data: { scriptError: `Não foi possível desativar o roteiro: ${scriptError}` } });
+    return this.get(id);
   }
 
   /** Reenvia apenas para quem falhou. */

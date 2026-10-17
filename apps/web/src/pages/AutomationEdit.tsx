@@ -5,7 +5,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { fmtDateTime, fmtNumber } from '../lib/format';
 import { templateInfo } from '../lib/template';
-import type { AudienceResult, AudienceSpec, Catalog, Template, VariablesConfig } from '../lib/types';
+import type { AudienceResult, AudienceSpec, Catalog, Roteiro, Template, VariablesConfig } from '../lib/types';
+import { EMPTY_SCRIPT, ScriptEditor, scriptFromServer, scriptProblem, useScriptDefaults } from '../components/ScriptEditor';
+import { Bot, CheckCircle2, XCircle } from 'lucide-react';
 import { FilterBuilder } from '../components/FilterBuilder';
 import { MappingEditor } from '../components/MappingEditor';
 import { exportAudience, useSavedAudiences } from '../components/AudienceToolbar';
@@ -22,6 +24,8 @@ interface StepForm {
   variables: VariablesConfig;
   cooldownDays: number;
   lastResult?: string | null;
+  code?: string | null;
+  script: Roteiro | null;
   open: boolean;
 }
 
@@ -34,6 +38,7 @@ const newStep = (n: number): StepForm => ({
   audience: { ...EMPTY_AUDIENCE, filters: [{ table: 'cliente', field: 'ativo', op: '=', value: 'S' }] },
   variables: { body: {}, buttons: {} },
   cooldownDays: 7,
+  script: null,
   open: true,
 });
 
@@ -188,6 +193,23 @@ function StepEditor({
               ))}
             </div>
           )}
+          <div className="space-y-4 rounded-2xl bg-white/[0.02] p-4 ring-1 ring-white/5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="label mb-0">Roteiro próprio desta etapa</span>
+                <p className="text-xs text-ink-400">
+                  Sem roteiro próprio, vale o roteiro geral da régua.{step.code ? ` Etiqueta: campanha-${step.code}` : ''}
+                </p>
+              </div>
+              <Toggle checked={!!step.script} onChange={(v) => set({ script: v ? { ...EMPTY_SCRIPT, nome: step.name } : null })} label="Usar" />
+            </div>
+            {step.script && (
+              <>
+                <ScriptEditor value={step.script} onChange={(sc) => set({ script: sc })} context={{ campaignName: step.name, templateId: step.templateId }} />
+                {scriptProblem(step.script) && <p className="text-xs text-amber-300">{scriptProblem(step.script)}</p>}
+              </>
+            )}
+          </div>
           {step.lastResult && <p className="text-xs text-ink-400">Última execução: {step.lastResult}</p>}
         </div>
       )}
@@ -208,6 +230,9 @@ export function AutomationEditPage() {
   const [saving, setSaving] = useState(false);
   const [history, setHistory] = useState<{ id: string; name: string; status: string; createdAt: string; counts: Record<string, number> }[]>([]);
   const [loaded, setLoaded] = useState(!id);
+  const [script, setScript] = useState<Roteiro | null>(null);
+  const [scriptState, setScriptState] = useState<{ code: string | null; error: string | null; syncedAt: string | null } | null>(null);
+  const scriptDefaults = useScriptDefaults();
 
   useEffect(() => {
     api<Catalog>('/ixc/catalog').then(setCatalog);
@@ -217,6 +242,8 @@ export function AutomationEditPage() {
         setName(a.name);
         setActive(a.active);
         setWeekdays(a.weekdays);
+        setScript(scriptFromServer(a.script));
+        setScriptState({ code: a.code, error: a.scriptError, syncedAt: a.scriptSyncedAt });
         setSteps(
           a.steps.map((s) => ({
             id: s.id,
@@ -228,6 +255,8 @@ export function AutomationEditPage() {
             variables: { body: s.variables?.body ?? {}, buttons: s.variables?.buttons ?? {} },
             cooldownDays: s.cooldownDays,
             lastResult: s.lastResult,
+            code: s.code,
+            script: scriptFromServer(s.script),
             open: false,
           })),
         );
@@ -238,16 +267,22 @@ export function AutomationEditPage() {
   }, [id]);
 
   const save = async () => {
+    const problem = (script && scriptProblem(script)) || steps.map((s, i) => s.script && scriptProblem(s.script) && `Etapa ${i + 1}: ${scriptProblem(s.script)}`).find(Boolean);
+    if (problem) return toast(`Roteiro: ${problem}`, 'error');
     setSaving(true);
     try {
       const body = {
         name,
         active,
         weekdays,
-        steps: steps.map(({ open: _o, lastResult: _l, ...s }) => ({ ...s, audience: s.savedAudienceId ? EMPTY_AUDIENCE : s.audience })),
+        script,
+        steps: steps.map(({ open: _o, lastResult: _l, code: _c, ...s }) => ({ ...s, audience: s.savedAudienceId ? EMPTY_AUDIENCE : s.audience })),
       };
       const a = id ? await api<Automation>(`/automations/${id}`, { method: 'PUT', body }) : await api<Automation>('/automations', { body });
-      toast(active ? 'Régua salva e ativa ✨' : 'Régua salva (pausada)');
+      setScriptState({ code: a.code, error: a.scriptError, syncedAt: a.scriptSyncedAt });
+      setSteps((all) => all.map((s, i) => ({ ...s, id: a.steps[i]?.id ?? s.id, code: a.steps[i]?.code ?? s.code })));
+      if (a.scriptError) toast(`Régua salva, mas o roteiro não foi gravado: ${a.scriptError}`, 'error');
+      else toast(active ? 'Régua salva e ativa ✨' : 'Régua salva (pausada)');
       if (!id) nav(`/reguas/${a.id}`, { replace: true });
     } catch (e: any) {
       toast(e.message, 'error');
@@ -317,6 +352,42 @@ export function AutomationEditPage() {
         <div className="pb-2">
           <Toggle checked={active} onChange={setActive} label={active ? 'Ativa' : 'Pausada'} />
         </div>
+      </Card>
+
+      <Card className="mb-6 space-y-4 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-fuchsia-300">
+              <Bot className="h-5 w-5" />
+            </div>
+            <div className="text-sm">
+              <div className="font-bold">Roteiro geral da IA de atendimento</div>
+              <p className="text-ink-300">Vale para todas as etapas que não tiverem roteiro próprio. Régua pausada ou excluída desativa os roteiros.</p>
+              {scriptState?.code && <div className="mt-1 font-mono text-[11px] text-ink-400">código: {scriptState.code}</div>}
+              {script && scriptState?.error && (
+                <div className="mt-1 flex items-start gap-1.5 text-rose-300">
+                  <XCircle className="mt-0.5 h-4 w-4 shrink-0" /> {scriptState.error}
+                </div>
+              )}
+              {script && !scriptState?.error && !active && <div className="mt-1 text-ink-400">Régua pausada: os roteiros ficam desativados no atendimento até ela ser ativada.</div>}
+              {script && !scriptState?.error && active && scriptState?.syncedAt && (
+                <div className="mt-1 flex items-center gap-1.5 text-emerald-300">
+                  <CheckCircle2 className="h-4 w-4" /> Gravado em {fmtDateTime(scriptState.syncedAt)}
+                </div>
+              )}
+              {!scriptDefaults?.enabled && (script || steps.some((s) => s.script)) && (
+                <div className="mt-1 text-amber-300">Integração com o atendimento não configurada: os roteiros ficam salvos aqui, mas não são enviados.</div>
+              )}
+            </div>
+          </div>
+          <Toggle checked={!!script} onChange={(v) => setScript(v ? { ...EMPTY_SCRIPT, nome: name } : null)} label="Usar" />
+        </div>
+        {script && (
+          <>
+            <ScriptEditor value={script} onChange={setScript} context={{ campaignName: name, templateId: steps[0]?.templateId }} />
+            {scriptProblem(script) && <p className="text-xs text-amber-300">{scriptProblem(script)}</p>}
+          </>
+        )}
       </Card>
 
       <div className="space-y-4">

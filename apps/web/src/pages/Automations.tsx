@@ -1,3 +1,4 @@
+import type { Roteiro } from '../lib/types';
 import { clsx } from 'clsx';
 import { Clock, Plus, Repeat } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -21,8 +22,21 @@ export interface AutomationStep {
   cooldownDays: number;
   lastRunDate: string | null;
   lastResult: string | null;
+  code: string | null;
+  script: Roteiro | null;
 }
-export interface Automation { id: string; name: string; active: boolean; weekdays: number[]; steps: AutomationStep[]; createdBy: { name: string } }
+export interface Automation {
+  id: string;
+  name: string;
+  active: boolean;
+  weekdays: number[];
+  steps: AutomationStep[];
+  createdBy: { name: string };
+  code: string | null;
+  script: Roteiro | null;
+  scriptError: string | null;
+  scriptSyncedAt: string | null;
+}
 
 export function AutomationsPage() {
   const toast = useToast();

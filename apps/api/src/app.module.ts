@@ -40,6 +40,8 @@ import { SystemController } from './system/system.controller';
 import { LgpdController } from './lgpd/lgpd.controller';
 import { AiService } from './ai/ai.service';
 import { AiController } from './ai/ai.controller';
+import { RoteirosService } from './roteiros/roteiros.service';
+import { RoteirosController } from './roteiros/roteiros.controller';
 
 const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist');
 
@@ -67,11 +69,13 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     SystemController,
     LgpdController,
     AiController,
+    RoteirosController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     PrismaService,
     AiService,
+    RoteirosService,
     SettingsService,
     IxcClient,
     AudienceService,

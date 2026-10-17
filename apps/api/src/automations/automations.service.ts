@@ -7,6 +7,8 @@ import { CampaignRunner } from '../campaigns/campaign-runner.service';
 import { CampaignsService } from '../campaigns/campaigns.service';
 import { VariablesConfig } from '../campaigns/variables.service';
 import { zonedNow } from '../common/time';
+import { newCode } from '../common/code';
+import { Roteiro, RoteirosService } from '../roteiros/roteiros.service';
 
 export interface StepInput {
   id?: string;
@@ -18,6 +20,7 @@ export interface StepInput {
   variables: VariablesConfig;
   headerMediaUrl?: string | null;
   cooldownDays?: number;
+  script?: Roteiro | null; // roteiro próprio da etapa
 }
 
 export interface AutomationInput {
@@ -25,6 +28,7 @@ export interface AutomationInput {
   active?: boolean;
   weekdays: number[];
   steps: StepInput[];
+  script?: Roteiro | null; // roteiro geral: vale para as etapas sem roteiro próprio
 }
 
 const include = {
@@ -47,7 +51,16 @@ export class AutomationsService {
     private audience: AudienceService,
     private runner: CampaignRunner,
     private campaigns: CampaignsService,
+    private roteiros: RoteirosService,
   ) {}
+
+  private async uniqueCode(name: string) {
+    for (;;) {
+      const code = newCode(name, 30); // sobra espaço para "-<etapa>" (máximo de 40)
+      const used = (await this.prisma.campaign.count({ where: { code } })) + (await this.prisma.automation.count({ where: { code } }));
+      if (!used) return code;
+    }
+  }
 
   private async now() {
     const { timezone } = await this.settings.get('general');
@@ -103,13 +116,33 @@ export class AutomationsService {
 
   async save(id: string | null, input: AutomationInput, userId: string) {
     await this.validate(input);
-    const data = { name: input.name.trim(), weekdays: [...new Set(input.weekdays)].sort(), active: !!input.active };
+    const script = await this.roteiros.prepare(input.script);
+    const stepScripts = await Promise.all(
+      input.steps.map((s, i) =>
+        this.roteiros.prepare(s.script).catch((e) => {
+          throw new BadRequestException(`Etapa ${i + 1}: ${e.message}`);
+        }),
+      ),
+    );
+    const before = id ? await this.prisma.automation.findUnique({ where: { id } }) : null;
+    const data = {
+      name: input.name.trim(),
+      weekdays: [...new Set(input.weekdays)].sort(),
+      active: !!input.active,
+      code: before?.code ?? (await this.uniqueCode(input.name)),
+      script: this.roteiros.json(script),
+    };
     const automation = id
       ? await this.prisma.automation.update({ where: { id }, data })
       : await this.prisma.automation.create({ data: { ...data, createdById: userId } });
 
     const existing = await this.prisma.automationStep.findMany({ where: { automationId: automation.id } });
     const keep = new Set(input.steps.map((s) => s.id).filter(Boolean));
+    // roteiros que deixam de existir: etapa excluída, roteiro tirado da etapa ou roteiro geral removido
+    const removedCodes = existing
+      .filter((e) => e.script && e.code && (!keep.has(e.id) || !stepScripts[input.steps.findIndex((s) => s.id === e.id)]))
+      .map((e) => e.code!);
+    if (before?.script && !script && before.code) removedCodes.push(before.code);
     await this.prisma.automationStep.deleteMany({ where: { automationId: automation.id, id: { notIn: [...keep] as string[] } } });
     for (const [position, s] of input.steps.entries()) {
       const prev = existing.find((e) => e.id === s.id);
@@ -124,10 +157,13 @@ export class AutomationsService {
         headerMediaUrl: s.headerMediaUrl || null,
         cooldownDays: Math.max(0, Math.min(365, Number(s.cooldownDays ?? 7))),
         lastRunDate: await this.initialRunDate(s.time, prev?.lastRunDate),
+        script: this.roteiros.json(stepScripts[position]),
       };
       if (prev) await this.prisma.automationStep.update({ where: { id: prev.id }, data: stepData });
       else await this.prisma.automationStep.create({ data: { ...stepData, automationId: automation.id } });
     }
+    await this.roteiros.ensureStepCodes(automation.id);
+    await this.roteiros.syncAutomation(automation.id, false, removedCodes);
     return this.get(automation.id);
   }
 
@@ -136,12 +172,17 @@ export class AutomationsService {
     if (active) {
       for (const s of a.steps) await this.prisma.automationStep.update({ where: { id: s.id }, data: { lastRunDate: await this.initialRunDate(s.time, s.lastRunDate) } });
     }
-    await this.prisma.automation.update({ where: { id }, data: { active } });
+    await this.prisma.automation.update({ where: { id }, data: { active, code: a.code ?? (await this.uniqueCode(a.name)) } });
+    await this.roteiros.ensureStepCodes(id);
+    // ligada: grava os roteiros; desligada: desativa
+    await this.roteiros.syncAutomation(id);
     return this.get(id);
   }
 
   async remove(id: string) {
+    const a = await this.get(id);
     await this.prisma.automation.delete({ where: { id } });
+    await this.roteiros.deactivateAutomation(a);
     return { ok: true };
   }
 
@@ -169,7 +210,12 @@ export class AutomationsService {
   /** Executa uma etapa agora (também usado pelo botão "Rodar agora"). */
   async runStep(stepId: string, now?: { date: string; label: string }) {
     now = now ?? (await this.now());
-    const step = await this.prisma.automationStep.findUniqueOrThrow({ where: { id: stepId }, include: { automation: true, template: true, savedAudience: true } });
+    let step = await this.prisma.automationStep.findUniqueOrThrow({ where: { id: stepId }, include: { automation: true, template: true, savedAudience: true } });
+    if (!step.automation.code || !step.code) {
+      if (!step.automation.code) await this.prisma.automation.update({ where: { id: step.automationId }, data: { code: await this.uniqueCode(step.automation.name) } });
+      await this.roteiros.ensureStepCodes(step.automationId);
+      step = await this.prisma.automationStep.findUniqueOrThrow({ where: { id: stepId }, include: { automation: true, template: true, savedAudience: true } });
+    }
     // marca antes de rodar: se algo falhar, não tenta de novo a cada minuto
     await this.prisma.automationStep.update({ where: { id: step.id }, data: { lastRunDate: now.date } });
     const finish = async (lastResult: string) => {
@@ -182,8 +228,18 @@ export class AutomationsService {
       const spec = (step.savedAudience?.audience ?? step.audience) as unknown as AudienceSpec;
       const preview = await this.audience.resolve(spec, { refresh: true });
       if (!preview.selected.length) return finish('nenhum cliente encontrado');
+      // só dispara com o roteiro gravado; se falhar, tenta de novo no próximo minuto
+      if (step.automation.script || step.script) {
+        try {
+          await this.roteiros.syncAutomation(step.automationId, true, [], true);
+        } catch (e: any) {
+          await this.prisma.automationStep.update({ where: { id: step.id }, data: { lastRunDate: step.lastRunDate } });
+          return finish(`não rodou: ${String(e.message).slice(0, 200)}`);
+        }
+      }
       const campaign = await this.prisma.campaign.create({
         data: {
+          code: step.code,
           name: `${step.automation.name} · ${step.name} · ${now.label}`,
           status: 'RUNNING',
           templateId: step.templateId,

@@ -48,6 +48,22 @@ export interface Campaign {
   createdAt: string;
   createdBy: { name: string };
   counts: Record<string, number>;
+  code: string | null;
+  script: Roteiro | null;
+  scriptSyncedAt: string | null;
+  scriptError: string | null;
+}
+
+/** Roteiro da IA de atendimento (formato da API do sistema de conversas). */
+export interface Roteiro {
+  nome: string;
+  instrucoes: string;
+  oferta: string | null;
+  duvidas: { pergunta: string; resposta: string }[];
+  quando_humano: string | null;
+  equipe: 'vendas' | 'suporte' | 'financeiro';
+  valido_ate: string | null; // na tela: aaaa-mm-dd; guardado: ISO com fuso
+  ativo: boolean;
 }
 
 export interface Recipient {

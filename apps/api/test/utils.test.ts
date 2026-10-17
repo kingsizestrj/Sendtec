@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { codeSlug, newCode, stepCode } from '../src/common/code';
 import assert from 'node:assert/strict';
 import { normalizeBrPhone } from '../src/common/phone';
 import { formatDate, formatMoney, normalizeKeyword, resolveDynamicValue, firstName, toIxcValue } from '../src/common/text';
@@ -108,4 +109,24 @@ test('tamanho e regras da imagem do cabeçalho', () => {
   const probs = imageIssues({ width: 400, height: 300 }, 200_000).map((i) => i.problem).join(' | ');
   assert.match(probs, /pequena/);
   assert.match(probs, /Proporção/);
+});
+
+test('códigos fixos de campanha e régua', () => {
+  const valid = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+  const c = newCode('Upgrade 1 Giga — Outubro!!! com um nome enorme de verdade mesmo');
+  assert.match(c, valid);
+  assert.ok(c.length <= 40);
+  assert.match(newCode('***'), /^campanha-[a-z0-9]{4}$/);
+  const a = newCode('Régua de cobrança', 30);
+  assert.ok(a.startsWith('regua-de-cobranca-') && a.length <= 30);
+  const taken = new Set<string>();
+  const d3 = stepCode('cobranca-a7f3', 'D-3', 0, taken);
+  taken.add(d3);
+  assert.equal(d3, 'cobranca-a7f3-d-3');
+  assert.equal(stepCode('cobranca-a7f3', 'D+2', 1, taken), 'cobranca-a7f3-d-mais-2');
+  const dup = stepCode('cobranca-a7f3', 'D-3', 2, taken);
+  assert.notEqual(dup, d3);
+  assert.match(dup, valid);
+  assert.equal(stepCode('cobranca-a7f3', '!!!', 3, taken), 'cobranca-a7f3-e4');
+  assert.equal(codeSlug('--Olá  Mundo--', 40), 'ola-mundo');
 });
