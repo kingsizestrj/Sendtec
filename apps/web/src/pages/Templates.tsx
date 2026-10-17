@@ -1,4 +1,4 @@
-import { AlertTriangle, MessageSquareText, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, MessageSquareText, Plus, RefreshCw, Sparkles, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
@@ -21,6 +21,13 @@ export function TemplatesPage() {
   const [items, setItems] = useState<Template[] | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [filter, setFilter] = useState('');
+
+  const [aiEnabled, setAiEnabled] = useState(false);
+  useEffect(() => {
+    api<{ enabled: boolean }>('/ai/status')
+      .then((r) => setAiEnabled(r.enabled))
+      .catch(() => undefined);
+  }, []);
 
   const load = useCallback(() => api<Template[]>('/templates').then(setItems), []);
 
@@ -136,9 +143,15 @@ export function TemplatesPage() {
                     </div>
                   )}
                 </div>
-                {t.status === 'REJECTED' && t.rejectedReason && (
-                  <div className="mt-3 flex items-start gap-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-200">
-                    <AlertTriangle className="h-4 w-4 shrink-0" /> Motivo: {t.rejectedReason}
+                {t.status === 'REJECTED' && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-rose-500/10 p-3 text-xs text-rose-200">
+                    <AlertTriangle className="h-4 w-4 shrink-0" />
+                    <span className="flex-1">Motivo: {t.rejectedReason || 'não informado pela Meta'}</span>
+                    {aiEnabled && (
+                      <Link to={`/modelos/novo?from=${t.id}&fix=1`} className="inline-flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1 font-semibold text-snow">
+                        <Sparkles className="h-3.5 w-3.5" /> Corrigir com IA
+                      </Link>
+                    )}
                   </div>
                 )}
                 <div className="mt-4 flex items-center justify-between text-xs text-ink-400">

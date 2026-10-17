@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeBrPhone } from '../src/common/phone';
 import { formatDate, formatMoney, normalizeKeyword, resolveDynamicValue, firstName, toIxcValue } from '../src/common/text';
 import { insideAnyArea, parseCoord } from '../src/common/geo';
-import { componentsInfo, countVars, renderText } from '../src/templates/template-utils';
+import { componentsInfo, countVars, draftIssues, renderText } from '../src/templates/template-utils';
 
 test('normaliza telefones brasileiros', () => {
   assert.equal(normalizeBrPhone('(11) 98765-4321'), '+5511987654321');
@@ -75,4 +75,22 @@ test('bloqueio de tentativas de login', async () => {
   registerFailure('b@x.com', '3.3.3.3', t0);
   registerSuccess('b@x.com');
   assert.doesNotThrow(() => assertNotLocked('b@x.com', '3.3.3.3', t0));
+});
+
+test('regras da Meta para rascunhos de modelo', () => {
+  const base = { name: 'aviso_manutencao', category: 'UTILITY' as const, headerText: null, footer: null, buttons: [] as any[] };
+  const ok = draftIssues({ ...base, body: 'Olá, {{1}}! Faremos uma manutenção na rede na quinta, das 2h às 5h. Pedimos desculpas pelo transtorno.', examples: ['Maria'] });
+  assert.deepEqual(ok.filter((i) => i.severity !== 'dica'), []);
+  const probs = (body: string, extra: object = {}) => draftIssues({ ...base, body, examples: ['a', 'b'], ...extra }).map((i) => i.problem).join(' | ');
+  assert.match(probs('{{1}}, sua fatura vence amanhã, não esqueça de pagar a tempo.'), /começa com uma variável/);
+  assert.match(probs('Olá, sua fatura de valor alto vence amanhã, {{1}}'), /termina com uma variável/);
+  assert.match(probs('Olá {{1}} {{2}}, sua fatura vence amanhã e já está disponível.'), /Duas variáveis seguidas/);
+  assert.match(probs('Olá {{2}}, sua fatura vence amanhã e já está disponível no app.'), /falta \{\{1\}\}/);
+  assert.match(probs('Olá {{1}}, pague pelo link bit.ly/abc123 e evite o bloqueio do seu plano.'), /encurtado/);
+  assert.match(probs('Olá {{1}}, conheça o novo plano de 1 Giga com preço especial para você.', { category: 'MARKETING' }), /descadastro/);
+  assert.doesNotMatch(
+    probs('Olá {{1}}, conheça o novo plano de 1 Giga com preço especial para você.', { category: 'MARKETING', buttons: [{ type: 'QUICK_REPLY', text: 'Sair' }] }),
+    /descadastro/,
+  );
+  assert.match(probs('Oi {{1}}, veja.', {}), /Muitas variáveis/);
 });

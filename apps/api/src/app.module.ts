@@ -38,6 +38,8 @@ import { AutomationsService } from './automations/automations.service';
 import { AutomationsController } from './automations/automations.controller';
 import { SystemController } from './system/system.controller';
 import { LgpdController } from './lgpd/lgpd.controller';
+import { AiService } from './ai/ai.service';
+import { AiController } from './ai/ai.controller';
 
 const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist');
 
@@ -64,10 +66,12 @@ const webDist = process.env.WEB_DIST || path.resolve(__dirname, '../../web/dist'
     AutomationsController,
     SystemController,
     LgpdController,
+    AiController,
   ],
   providers: [
     { provide: APP_GUARD, useClass: AuthGuard },
     PrismaService,
+    AiService,
     SettingsService,
     IxcClient,
     AudienceService,

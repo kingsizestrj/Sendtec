@@ -1,4 +1,5 @@
-import { ArrowLeft, ImagePlus, Plus, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, ImagePlus, Plus, Send, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
+import { AiReviewModal, AiWriter, Draft, Issue, IssueList } from '../components/AiAssistant';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { localMedia } from '../lib/format';
@@ -40,6 +41,36 @@ export function TemplateNewPage() {
   const [buttons, setButtons] = useState<Btn[]>([]);
   const [params] = useSearchParams();
   const fromId = params.get('from');
+  const fixMode = params.get('fix') === '1';
+  const [aiEnabled, setAiEnabled] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [fixInfo, setFixInfo] = useState<{ loading: boolean; explanation?: string; changes?: string[]; reason?: string | null } | null>(null);
+
+  useEffect(() => {
+    api<{ enabled: boolean }>('/ai/status')
+      .then((r) => setAiEnabled(r.enabled))
+      .catch(() => setAiEnabled(false));
+  }, []);
+
+  /** Preenche o formulário com um rascunho vindo da IA (mantém a imagem do cabeçalho, se houver). */
+  const applyDraft = (d: Draft) => {
+    setName(d.name);
+    setCategory(d.category);
+    if (d.headerText) {
+      setHeaderType('TEXT');
+      setHeaderText(d.headerText);
+    } else setHeaderType((h) => (h === 'IMAGE' ? 'IMAGE' : 'NONE'));
+    setBody(d.body);
+    setExamples(d.examples);
+    setFooter(d.footer ?? '');
+    setButtons(
+      d.buttons.map((b) =>
+        b.type === 'URL' ? { type: 'URL', text: b.text, url: b.url ?? 'https://' } : b.type === 'PHONE_NUMBER' ? { type: 'PHONE_NUMBER', text: b.text, phoneNumber: b.phoneNumber ?? '' } : { type: 'QUICK_REPLY', text: b.text },
+      ),
+    );
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // "Criar a partir deste": preenche o formulário com um modelo existente
   useEffect(() => {
@@ -70,11 +101,40 @@ export function TemplateNewPage() {
               : { type: 'QUICK_REPLY', text: b.text },
         ),
       );
+      // "Corrigir com IA": explica a rejeição e já preenche a versão corrigida
+      if (fixMode) {
+        setFixInfo({ loading: true, reason: t.rejectedReason });
+        api<{ explanation: string; changes: string[]; improved: Draft }>(`/ai/templates/${fromId}/fix`, { method: 'POST' })
+          .then((r) => {
+            setFixInfo({ loading: false, explanation: r.explanation, changes: r.changes, reason: t.rejectedReason });
+            applyDraft(r.improved);
+          })
+          .catch((e) => {
+            setFixInfo(null);
+            toast(e.message, 'error');
+          });
+      }
     });
-  }, [fromId]);
+  }, [fromId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [saving, setSaving] = useState(false);
 
   const vars = countVars(body);
+  const draft: Draft = useMemo(
+    () => ({ name, category, headerText: headerType === 'TEXT' ? headerText : null, body, examples: examples.slice(0, vars), footer: footer || null, buttons }),
+    [name, category, headerType, headerText, body, examples, vars, footer, buttons],
+  );
+
+  // conferência automática das regras da Meta enquanto digita (sem IA, sem custo)
+  useEffect(() => {
+    const t = setTimeout(() => {
+      api<{ issues: Issue[] }>('/ai/templates/check', { body: draft })
+        .then((r) => setIssues(r.issues))
+        .catch(() => undefined);
+    }, 500);
+    return () => clearTimeout(t);
+  }, [draft]);
+  const blocking = issues.filter((i) => i.severity === 'bloqueia');
+
   const exampleValues = useMemo(() => Object.fromEntries(examples.slice(0, vars).map((v, i) => [String(i + 1), v])), [examples, vars]);
 
   const insertVar = () => {
@@ -147,7 +207,7 @@ export function TemplateNewPage() {
   return (
     <>
       <PageHeader
-        title={fromId ? 'Novo modelo (a partir de outro)' : 'Novo modelo'}
+        title={fixMode ? 'Corrigir modelo rejeitado' : fromId ? 'Novo modelo (a partir de outro)' : 'Novo modelo'}
         subtitle="Depois de enviado, a Meta costuma analisar em alguns minutos"
         actions={
           <Link to="/modelos">
@@ -159,6 +219,25 @@ export function TemplateNewPage() {
       />
       <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
         <div className="space-y-6">
+          {fixInfo && (
+            <Card className="space-y-3 border border-fuchsia-500/20 p-6">
+              <div className="flex items-center gap-2 font-bold">
+                <Sparkles className={`h-5 w-5 text-fuchsia-300 ${fixInfo.loading ? 'animate-pulse' : ''}`} />
+                {fixInfo.loading ? 'A IA está analisando a rejeição…' : 'Por que a Meta rejeitou'}
+              </div>
+              {fixInfo.reason && <p className="text-xs text-ink-400">Motivo informado pela Meta: {fixInfo.reason}</p>}
+              {fixInfo.explanation && <p className="text-sm text-ink-200">{fixInfo.explanation}</p>}
+              {!!fixInfo.changes?.length && (
+                <ul className="list-disc space-y-1 pl-5 text-sm text-ink-300">
+                  {fixInfo.changes.map((c, i) => (
+                    <li key={i}>{c}</li>
+                  ))}
+                </ul>
+              )}
+              {!fixInfo.loading && <p className="text-xs text-emerald-300">A versão corrigida já está no formulário abaixo. Confira e envie.</p>}
+            </Card>
+          )}
+          {aiEnabled && !fixMode && <AiWriter onUse={applyDraft} />}
           <Card className="space-y-5 p-6">
             <div className="grid gap-5 sm:grid-cols-2">
               <Field label="Nome do modelo" hint="Minúsculas, números e _ (é assim que a Meta exige)">
@@ -337,11 +416,30 @@ export function TemplateNewPage() {
             buttons={buttons}
             values={exampleValues}
           />
-          <Button className="mt-6 w-full" loading={saving} disabled={!name || !body.trim()} onClick={submit} icon={<Send className="h-4 w-4" />}>
+          {issues.length > 0 && (
+            <div className="mt-6">
+              <span className="label">Conferência das regras da Meta</span>
+              <IssueList issues={issues} />
+            </div>
+          )}
+          {aiEnabled && (
+            <Button variant="outline" className="mt-6 w-full" disabled={!body.trim()} onClick={() => setReviewOpen(true)} icon={<ShieldCheck className="h-4 w-4" />}>
+              Revisar com IA antes de enviar
+            </Button>
+          )}
+          <Button
+            className="mt-3 w-full"
+            loading={saving}
+            disabled={!name || !body.trim() || blocking.length > 0}
+            title={blocking.length ? 'Corrija os itens em vermelho antes de enviar' : undefined}
+            onClick={submit}
+            icon={<Send className="h-4 w-4" />}
+          >
             Enviar para aprovação
           </Button>
         </div>
       </div>
+      <AiReviewModal open={reviewOpen} draft={draft} onClose={() => setReviewOpen(false)} onApply={applyDraft} />
     </>
   );
 }

@@ -40,6 +40,12 @@ export interface LgpdSettings {
   retentionMonths: number; // 0 = não anonimizar automaticamente
 }
 
+export interface AiSettings {
+  apiKey: string; // chave da API da Anthropic (Claude)
+  model: string; // claude-haiku-5-5 (padrão, mais barato) ou claude-sonnet-5-5
+  brandTone: string; // como a empresa fala com os clientes
+}
+
 export interface SmtpSettings {
   host: string;
   port: number;
@@ -56,6 +62,7 @@ export interface AllSettings {
   general: GeneralSettings;
   smtp: SmtpSettings;
   lgpd: LgpdSettings;
+  ai: AiSettings;
 }
 
 export const DEFAULT_SETTINGS: AllSettings = {
@@ -74,6 +81,7 @@ export const DEFAULT_SETTINGS: AllSettings = {
     timezone: 'America/Sao_Paulo',
   },
   lgpd: { retentionMonths: 0 },
+  ai: { apiKey: '', model: 'claude-haiku-5-5', brandTone: 'Próximo e simpático, como um vizinho que entende de internet. Frases curtas, linguagem simples, no máximo 2 emojis.' },
   smtp: { host: '', port: 587, secure: false, user: '', pass: '', from: '' },
 };
 
@@ -85,4 +93,5 @@ export const SECRET_FIELDS: Record<keyof AllSettings, string[]> = {
   general: [],
   smtp: ['pass'],
   lgpd: [],
+  ai: ['apiKey'],
 };

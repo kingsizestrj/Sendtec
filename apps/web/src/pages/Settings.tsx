@@ -84,6 +84,7 @@ export function SettingsPage() {
       await api('/settings', { method: 'PUT', body: s });
       const r = await api('/settings/test', { body: { target, email: target === 'smtp' ? testEmail : undefined } });
       let message = r.error;
+      if (r.ok && target === 'ai') message = `Conectado! A IA está pronta (${r.model}).`;
       if (r.ok && target === 'ixc') message = `Conectado! ${r.totalClientes.toLocaleString('pt-BR')} clientes no IXC.`;
       if (r.ok && target === 'smtp') message = testEmail ? `Conectado! E-mail de teste enviado para ${testEmail}.` : 'Conectado ao servidor de e-mail.';
       if (r.ok && target === 'notify') message = `Aviso enviado para ${r.sent} número(s).${r.errors?.length ? ' Erros: ' + r.errors.join('; ') : ''}`;
@@ -259,6 +260,28 @@ export function SettingsPage() {
           <div className="flex items-end">
             <Toggle checked={!!s.smtp?.secure} onChange={(v) => set('smtp', 'secure', v)} label="SSL direto (porta 465)" />
           </div>
+        </Section>
+
+        <Section
+          icon={<Sparkles className="h-5 w-5" />}
+          title="Inteligência artificial"
+          subtitle="Escreve modelos, revisa antes de enviar e corrige os rejeitados (Claude, da Anthropic)"
+          onTest={() => test('ai')}
+          testing={testing === 'ai'}
+          result={results.ai}
+        >
+          <Field label="Chave da API da Anthropic" hint="Crie em console.anthropic.com → API Keys. Deixe em branco para desligar a IA.">
+            <input className="input" type="password" value={s.ai?.apiKey ?? ''} onChange={(e) => set('ai', 'apiKey', e.target.value)} placeholder="sk-ant-..." />
+          </Field>
+          <Field label="Modelo" hint="O Haiku resolve muito bem modelos de mensagem e custa por volta de 1 centavo por uso">
+            <select className="input" value={s.ai?.model ?? 'claude-haiku-5-5'} onChange={(e) => set('ai', 'model', e.target.value)}>
+              <option value="claude-haiku-5-5">Claude Haiku 5.5 (recomendado, mais barato)</option>
+              <option value="claude-sonnet-5-5">Claude Sonnet 5.5 (textos mais refinados, ~20x o custo)</option>
+            </select>
+          </Field>
+          <Field label="Tom da marca" className="md:col-span-2" hint="Como a sua empresa conversa com os clientes. A IA segue isso em todas as versões.">
+            <textarea className="input min-h-[80px] resize-y" maxLength={600} value={s.ai?.brandTone ?? ''} onChange={(e) => set('ai', 'brandTone', e.target.value)} />
+          </Field>
         </Section>
 
         <Section icon={<Globe className="h-5 w-5" />} title="Geral" subtitle="Envio, descadastro e aparência">

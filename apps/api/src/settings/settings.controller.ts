@@ -9,6 +9,7 @@ import { AllSettings } from './settings.types';
 import { IxcClient } from '../ixc/ixc.client';
 import { ChatwootClient } from '../chatwoot/chatwoot.client';
 import { MetaClient } from '../meta/meta.client';
+import { AiService } from '../ai/ai.service';
 
 @Controller('settings')
 export class SettingsController {
@@ -20,6 +21,7 @@ export class SettingsController {
     private audit: AuditService,
     private mail: MailService,
     private runner: CampaignRunner,
+    private ai: AiService,
   ) {}
 
   /** Configurações públicas para qualquer usuário logado (nome da empresa, mapa). */
@@ -40,7 +42,7 @@ export class SettingsController {
   async update(@Body() body: Partial<AllSettings>, @CurrentUser() user: AuthUser) {
     const before = await this.settings.masked();
     const changed: string[] = [];
-    for (const section of ['ixc', 'chatwoot', 'meta', 'general', 'smtp', 'lgpd'] as const) {
+    for (const section of ['ixc', 'chatwoot', 'meta', 'general', 'smtp', 'lgpd', 'ai'] as const) {
       if (!body[section]) continue;
       await this.settings.update(section, body[section]!);
       if (JSON.stringify((await this.settings.masked())[section]) !== JSON.stringify(before[section])) changed.push(section);
@@ -53,7 +55,7 @@ export class SettingsController {
   /** Testa as conexões com os valores salvos. */
   @Roles(Role.ADMIN)
   @Post('test')
-  async test(@Body() body: { target: 'ixc' | 'chatwoot' | 'meta' | 'smtp' | 'notify'; email?: string }, @CurrentUser() user: AuthUser) {
+  async test(@Body() body: { target: 'ixc' | 'chatwoot' | 'meta' | 'smtp' | 'notify' | 'ai'; email?: string }, @CurrentUser() user: AuthUser) {
     const all = await this.settings.all();
     try {
       if (body.target === 'smtp') {
@@ -65,6 +67,7 @@ export class SettingsController {
         const r = await this.runner.notify(`teste de aviso enviado por ${user.name}`);
         return r.sent ? { ok: true, sent: r.sent, errors: r.errors } : { ok: false, error: r.errors.join('; ') };
       }
+      if (body.target === 'ai') return await this.ai.test();
       if (body.target === 'ixc') return await this.ixc.test(all.ixc);
       if (body.target === 'chatwoot') return await this.chatwoot.test(all.chatwoot);
       return await this.meta.test(all.meta);
