@@ -1,5 +1,6 @@
 import { clsx } from 'clsx';
 import { Loader2, X } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { ButtonHTMLAttributes, createContext, ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 
 export function Button({
@@ -113,7 +114,8 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
     return () => window.removeEventListener('keydown', esc);
   }, [onClose]);
   if (!open) return null;
-  return (
+  // portal no <body>: dentro de um elemento com backdrop-filter (ex.: Card .glass) o "fixed" ficaria preso a ele
+  return createPortal(
     <div className="fixed inset-0 z-[2000] grid place-items-center bg-black/60 p-4 backdrop-blur-sm" onMouseDown={onClose}>
       <div onMouseDown={(e) => e.stopPropagation()} className={clsx('glass w-full rounded-2xl bg-ink-900/95 p-6 animate-fade-up', wide ? 'max-w-3xl' : 'max-w-md')}>
         <div className="mb-5 flex items-center justify-between">
@@ -124,7 +126,8 @@ export function Modal({ open, onClose, title, children, wide }: { open: boolean;
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
