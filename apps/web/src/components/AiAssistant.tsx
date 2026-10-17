@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
-import { AlertTriangle, CheckCircle2, Info, ShieldAlert, Sparkles, Wand2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ImagePlus, Info, ShieldAlert, Sparkles, Wand2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { fill } from '../lib/template';
 import { Button, Card, Modal, StatusBadge, useToast } from './ui';
@@ -13,7 +13,9 @@ export type Draft = {
   examples: string[];
   footer: string | null;
   buttons: { type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER'; text: string; url?: string | null; phoneNumber?: string | null }[];
+  mediaId?: string | null; // imagem do cabeçalho, para a IA analisar a arte
 };
+export type AiImage = { id: string; preview: string };
 export type Issue = { severity: 'bloqueia' | 'risco' | 'dica'; problem: string; fix: string };
 type Usage = { model: string; costUsd: number };
 type Suggestion = { title: string; categoryReason: string; draft: Draft; variables: { n: number; meaning: string; source: string }[]; issues: Issue[] };
@@ -52,10 +54,11 @@ export function IssueList({ issues, compact }: { issues: Issue[]; compact?: bool
   );
 }
 
-function DraftPreview({ draft }: { draft: Draft }) {
+function DraftPreview({ draft, image }: { draft: Draft; image?: string | null }) {
   const values = Object.fromEntries(draft.examples.map((v, i) => [String(i + 1), v]));
   return (
     <div className="rounded-xl bg-[#1f2c34]/70 p-3 text-[13px] leading-snug text-[#e9edef]">
+      {image && <img src={image} className="mb-2 aspect-[1.91/1] w-full max-w-sm rounded-lg object-cover" />}
       {draft.headerText && <div className="mb-1 font-bold">{draft.headerText}</div>}
       <div className="whitespace-pre-wrap">{fill(draft.body, values)}</div>
       {draft.footer && <div className="mt-1.5 text-[11px] text-[#8696a0]">{draft.footer}</div>}
@@ -73,17 +76,43 @@ function DraftPreview({ draft }: { draft: Draft }) {
 }
 
 /** "Escrever com IA": objetivo → 3 versões prontas para usar. */
-export function AiWriter({ onUse }: { onUse: (d: Draft) => void }) {
+export function AiWriter({ onUse, currentImage }: { onUse: (d: Draft, image: AiImage | null) => void; currentImage?: AiImage | null }) {
   const toast = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [objective, setObjective] = useState('');
   const [category, setCategory] = useState<'AUTO' | 'MARKETING' | 'UTILITY'>('AUTO');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ suggestions: Suggestion[]; usage: Usage } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [image, setImage] = useState<AiImage | null>(null);
+  const [result, setResult] = useState<{ suggestions: Suggestion[]; imageSummary: string | null; imageIssues: Issue[]; usage: Usage } | null>(null);
+  const [usedImage, setUsedImage] = useState<AiImage | null>(null);
+
+  // se já há uma imagem no cabeçalho do formulário, a IA usa ela
+  useEffect(() => {
+    if (currentImage && !image) setImage(currentImage);
+  }, [currentImage]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const upload = async (file?: File) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const media = await api<{ id: string }>('/media', { form });
+      setImage({ id: media.id, preview: URL.createObjectURL(file) });
+    } catch (e: any) {
+      toast(e.message, 'error');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
 
   const generate = async () => {
     setLoading(true);
     try {
-      setResult(await api('/ai/templates/generate', { body: { objective, category } }));
+      setResult(await api('/ai/templates/generate', { body: { objective, category, mediaId: image?.id ?? null } }));
+      setUsedImage(image);
     } catch (e: any) {
       toast(e.message, 'error');
     } finally {
@@ -99,15 +128,39 @@ export function AiWriter({ onUse }: { onUse: (d: Draft) => void }) {
         </div>
         <div>
           <h3 className="font-bold">Escrever com IA</h3>
-          <p className="text-sm text-ink-300">Descreva o que você quer comunicar. A IA escreve 3 versões seguindo as regras da Meta e sugere a categoria certa.</p>
+          <p className="text-sm text-ink-300">
+            Descreva o que você quer comunicar e, se quiser, envie a arte. A IA lê a imagem, escreve 3 versões que combinam com ela seguindo as regras da Meta e sugere a categoria certa.
+          </p>
         </div>
       </div>
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg" hidden onChange={(e) => upload(e.target.files?.[0])} />
+      {image ? (
+        <div className="flex items-center gap-3 rounded-xl bg-white/[0.03] p-2 ring-1 ring-white/10">
+          <img src={image.preview} className="h-14 w-24 rounded-lg object-cover" />
+          <span className="flex-1 text-xs text-ink-300">A IA vai analisar esta imagem e usá-la no cabeçalho.</span>
+          <button onClick={() => setImage(null)} title="Remover imagem" className="rounded-lg p-1.5 text-ink-300 hover:bg-white/5 hover:text-white">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/15 p-3 text-sm text-ink-300 transition hover:border-fuchsia-500/50 hover:text-white"
+        >
+          <ImagePlus className="h-4 w-4" /> {uploading ? 'Enviando…' : 'Adicionar imagem (opcional, JPG ou PNG)'}
+        </button>
+      )}
       <textarea
         className="input min-h-[90px] resize-y"
         maxLength={2000}
         value={objective}
         onChange={(e) => setObjective(e.target.value)}
-        placeholder="Ex.: avisar os clientes do bairro Centro que vamos fazer manutenção na rede na quinta das 2h às 5h da manhã, e pedir desculpas pelo transtorno"
+        placeholder={
+          image
+            ? 'Opcional com imagem. Ex.: divulgar a promoção da arte para clientes com plano abaixo de 300 Mega'
+            : 'Ex.: avisar os clientes do bairro Centro que vamos fazer manutenção na rede na quinta das 2h às 5h da manhã, e pedir desculpas pelo transtorno'
+        }
       />
       <div className="flex flex-wrap items-center gap-3">
         <select className="input w-auto" value={category} onChange={(e) => setCategory(e.target.value as any)}>
@@ -115,7 +168,7 @@ export function AiWriter({ onUse }: { onUse: (d: Draft) => void }) {
           <option value="MARKETING">Marketing</option>
           <option value="UTILITY">Utilidade</option>
         </select>
-        <Button loading={loading} disabled={objective.trim().length < 8} onClick={generate} icon={<Wand2 className="h-4 w-4" />}>
+        <Button loading={loading} disabled={objective.trim().length < 8 && !image} onClick={generate} icon={<Wand2 className="h-4 w-4" />}>
           {result ? 'Gerar de novo' : 'Gerar 3 versões'}
         </Button>
         {loading && <span className="text-xs text-ink-400">Escrevendo… costuma levar de 10 a 30 segundos</span>}
@@ -123,6 +176,12 @@ export function AiWriter({ onUse }: { onUse: (d: Draft) => void }) {
 
       {result && (
         <>
+          {result.imageSummary && (
+            <p className="rounded-xl bg-white/[0.03] p-3 text-xs text-ink-300">
+              <b className="text-fuchsia-300">A IA viu na imagem:</b> {result.imageSummary}
+            </p>
+          )}
+          <IssueList issues={result.imageIssues ?? []} />
           <div className="grid gap-4 xl:grid-cols-3">
             {result.suggestions.map((s, i) => (
               <div key={i} className="flex flex-col gap-3 rounded-2xl bg-white/[0.03] p-4 ring-1 ring-white/10">
@@ -130,7 +189,7 @@ export function AiWriter({ onUse }: { onUse: (d: Draft) => void }) {
                   <span className="text-sm font-bold">{s.title}</span>
                   <StatusBadge status={s.draft.category} />
                 </div>
-                <DraftPreview draft={s.draft} />
+                <DraftPreview draft={s.draft} image={usedImage?.preview} />
                 <p className="text-[11px] text-ink-400">{s.categoryReason}</p>
                 {s.variables.length > 0 && (
                   <ul className="space-y-0.5 text-[11px] text-ink-300">
@@ -142,7 +201,7 @@ export function AiWriter({ onUse }: { onUse: (d: Draft) => void }) {
                   </ul>
                 )}
                 <IssueList issues={s.issues} compact />
-                <Button size="sm" className="mt-auto" onClick={() => onUse(s.draft)}>
+                <Button size="sm" className="mt-auto" onClick={() => onUse(s.draft, usedImage)}>
                   Usar esta versão
                 </Button>
               </div>
@@ -163,6 +222,7 @@ type Review = {
   issues: Issue[];
   improved: Draft | null;
   improvedIssues: Issue[];
+  imageAdvice: string | null;
   usage: Usage;
 };
 
@@ -173,7 +233,7 @@ const VERDICT = {
 };
 
 /** Revisão por IA antes de enviar para a Meta. */
-export function AiReviewModal({ draft, open, onClose, onApply }: { draft: Draft; open: boolean; onClose: () => void; onApply: (d: Draft) => void }) {
+export function AiReviewModal({ draft, image, open, onClose, onApply }: { draft: Draft; image?: string | null; open: boolean; onClose: () => void; onApply: (d: Draft) => void }) {
   const toast = useToast();
   const [review, setReview] = useState<Review | null>(null);
   const [loading, setLoading] = useState(false);
@@ -217,10 +277,18 @@ export function AiReviewModal({ draft, open, onClose, onApply }: { draft: Draft;
             <p className="mt-1 text-xs text-ink-400">{review.categoryReason}</p>
           </div>
           <IssueList issues={review.issues} />
+          {review.imageAdvice && (
+            <div className="flex gap-3 rounded-xl bg-fuchsia-500/10 p-3 text-sm text-fuchsia-100">
+              {image && <img src={image} className="h-16 w-28 shrink-0 rounded-lg object-cover" />}
+              <span>
+                <b>Sobre a imagem:</b> {review.imageAdvice}
+              </span>
+            </div>
+          )}
           {review.improved && (
             <div className="space-y-2">
               <span className="label">Versão corrigida sugerida</span>
-              <DraftPreview draft={review.improved} />
+              <DraftPreview draft={review.improved} image={image} />
               <IssueList issues={review.improvedIssues} compact />
             </div>
           )}

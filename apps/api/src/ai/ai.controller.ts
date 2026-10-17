@@ -2,12 +2,13 @@ import { Body, Controller, Get, NotFoundException, Param, Post } from '@nestjs/c
 import { AuthUser, CurrentUser } from '../auth/decorators';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma.service';
-import { componentsInfo, draftIssues, TemplateDraft } from '../templates/template-utils';
+import { MediaService } from '../media/media.service';
+import { componentsInfo, draftIssues, imageIssues, imageSize, TemplateDraft } from '../templates/template-utils';
 import { AiService, AiUsage } from './ai.service';
 
 @Controller('ai')
 export class AiController {
-  constructor(private ai: AiService, private audit: AuditService, private prisma: PrismaService) {}
+  constructor(private ai: AiService, private audit: AuditService, private prisma: PrismaService, private media: MediaService) {}
 
   @Get('status')
   status() {
@@ -16,19 +17,24 @@ export class AiController {
 
   /** Regras objetivas, sem IA (usado na hora, enquanto o usuário digita). */
   @Post('templates/check')
-  check(@Body() body: TemplateDraft) {
-    return { issues: draftIssues(body) };
+  async check(@Body() body: TemplateDraft & { mediaId?: string | null }) {
+    const issues = draftIssues(body);
+    if (body.mediaId) {
+      const { buffer } = await this.media.read(body.mediaId).catch(() => ({ buffer: null as Buffer | null }));
+      if (buffer) issues.push(...imageIssues(imageSize(buffer), buffer.length));
+    }
+    return { issues };
   }
 
   @Post('templates/generate')
-  async generate(@Body() body: { objective: string; category?: 'AUTO' | 'MARKETING' | 'UTILITY'; notes?: string }, @CurrentUser() user: AuthUser) {
+  async generate(@Body() body: { objective: string; category?: 'AUTO' | 'MARKETING' | 'UTILITY'; notes?: string; mediaId?: string | null }, @CurrentUser() user: AuthUser) {
     const r = await this.ai.generate(body);
-    await this.log(user, 'Gerou modelos com IA', null, r.usage, { objetivo: body.objective.slice(0, 200) });
+    await this.log(user, 'Gerou modelos com IA', null, r.usage, { objetivo: (body.objective ?? '').slice(0, 200), imagem: !!body.mediaId });
     return r;
   }
 
   @Post('templates/review')
-  async review(@Body() body: TemplateDraft, @CurrentUser() user: AuthUser) {
+  async review(@Body() body: TemplateDraft & { mediaId?: string | null }, @CurrentUser() user: AuthUser) {
     const r = await this.ai.review(body);
     await this.log(user, 'Revisou modelo com IA', null, r.usage, { modelo: body.name, resultado: r.verdict });
     return r;
@@ -49,7 +55,7 @@ export class AiController {
       footer: info.footerText,
       buttons: info.buttons.map((b: any) => ({ type: b.type, text: b.text, url: b.url, phoneNumber: b.phone_number })),
     };
-    const r = await this.ai.fixRejected(draft, t.rejectedReason);
+    const r = await this.ai.fixRejected(draft, t.rejectedReason, info.headerFormat === 'IMAGE' ? t.headerMediaId : null);
     await this.log(user, 'Pediu correção de modelo rejeitado à IA', id, r.usage, { modelo: t.name });
     return { ...r, headerFormat: info.headerFormat, headerMediaId: t.headerMediaId };
   }

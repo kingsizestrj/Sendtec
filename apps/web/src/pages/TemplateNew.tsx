@@ -1,5 +1,5 @@
 import { ArrowLeft, ImagePlus, Plus, Send, ShieldCheck, Sparkles, Trash2 } from 'lucide-react';
-import { AiReviewModal, AiWriter, Draft, Issue, IssueList } from '../components/AiAssistant';
+import { AiImage, AiReviewModal, AiWriter, Draft, Issue, IssueList } from '../components/AiAssistant';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { localMedia } from '../lib/format';
@@ -45,7 +45,7 @@ export function TemplateNewPage() {
   const [aiEnabled, setAiEnabled] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
-  const [fixInfo, setFixInfo] = useState<{ loading: boolean; explanation?: string; changes?: string[]; reason?: string | null } | null>(null);
+  const [fixInfo, setFixInfo] = useState<{ loading: boolean; explanation?: string; changes?: string[]; imageAdvice?: string | null; reason?: string | null } | null>(null);
 
   useEffect(() => {
     api<{ enabled: boolean }>('/ai/status')
@@ -54,10 +54,13 @@ export function TemplateNewPage() {
   }, []);
 
   /** Preenche o formulário com um rascunho vindo da IA (mantém a imagem do cabeçalho, se houver). */
-  const applyDraft = (d: Draft) => {
+  const applyDraft = (d: Draft, img?: AiImage | null) => {
     setName(d.name);
     setCategory(d.category);
-    if (d.headerText) {
+    if (img) {
+      setHeaderType('IMAGE');
+      setImage(img);
+    } else if (d.headerText) {
       setHeaderType('TEXT');
       setHeaderText(d.headerText);
     } else setHeaderType((h) => (h === 'IMAGE' ? 'IMAGE' : 'NONE'));
@@ -104,9 +107,9 @@ export function TemplateNewPage() {
       // "Corrigir com IA": explica a rejeição e já preenche a versão corrigida
       if (fixMode) {
         setFixInfo({ loading: true, reason: t.rejectedReason });
-        api<{ explanation: string; changes: string[]; improved: Draft }>(`/ai/templates/${fromId}/fix`, { method: 'POST' })
+        api<{ explanation: string; changes: string[]; improved: Draft; imageAdvice: string | null }>(`/ai/templates/${fromId}/fix`, { method: 'POST' })
           .then((r) => {
-            setFixInfo({ loading: false, explanation: r.explanation, changes: r.changes, reason: t.rejectedReason });
+            setFixInfo({ loading: false, explanation: r.explanation, changes: r.changes, imageAdvice: r.imageAdvice, reason: t.rejectedReason });
             applyDraft(r.improved);
           })
           .catch((e) => {
@@ -120,8 +123,17 @@ export function TemplateNewPage() {
 
   const vars = countVars(body);
   const draft: Draft = useMemo(
-    () => ({ name, category, headerText: headerType === 'TEXT' ? headerText : null, body, examples: examples.slice(0, vars), footer: footer || null, buttons }),
-    [name, category, headerType, headerText, body, examples, vars, footer, buttons],
+    () => ({
+      name,
+      category,
+      headerText: headerType === 'TEXT' ? headerText : null,
+      body,
+      examples: examples.slice(0, vars),
+      footer: footer || null,
+      buttons,
+      mediaId: headerType === 'IMAGE' ? (image?.id ?? null) : null,
+    }),
+    [name, category, headerType, headerText, body, examples, vars, footer, buttons, image],
   );
 
   // conferência automática das regras da Meta enquanto digita (sem IA, sem custo)
@@ -234,10 +246,16 @@ export function TemplateNewPage() {
                   ))}
                 </ul>
               )}
+              {fixInfo.imageAdvice && (
+                <div className="rounded-xl bg-fuchsia-500/10 p-3 text-sm text-fuchsia-100">
+                  <b>Sobre a imagem:</b> {fixInfo.imageAdvice}
+                  <p className="mt-1 text-xs opacity-80">Se precisar trocar a arte, envie a nova imagem no Cabeçalho abaixo.</p>
+                </div>
+              )}
               {!fixInfo.loading && <p className="text-xs text-emerald-300">A versão corrigida já está no formulário abaixo. Confira e envie.</p>}
             </Card>
           )}
-          {aiEnabled && !fixMode && <AiWriter onUse={applyDraft} />}
+          {aiEnabled && !fixMode && <AiWriter onUse={applyDraft} currentImage={headerType === 'IMAGE' ? image : null} />}
           <Card className="space-y-5 p-6">
             <div className="grid gap-5 sm:grid-cols-2">
               <Field label="Nome do modelo" hint="Minúsculas, números e _ (é assim que a Meta exige)">
@@ -439,7 +457,7 @@ export function TemplateNewPage() {
           </Button>
         </div>
       </div>
-      <AiReviewModal open={reviewOpen} draft={draft} onClose={() => setReviewOpen(false)} onApply={applyDraft} />
+      <AiReviewModal open={reviewOpen} draft={draft} image={headerType === 'IMAGE' ? image?.preview : null} onClose={() => setReviewOpen(false)} onApply={applyDraft} />
     </>
   );
 }

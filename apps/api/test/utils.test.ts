@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeBrPhone } from '../src/common/phone';
 import { formatDate, formatMoney, normalizeKeyword, resolveDynamicValue, firstName, toIxcValue } from '../src/common/text';
 import { insideAnyArea, parseCoord } from '../src/common/geo';
-import { componentsInfo, countVars, draftIssues, renderText } from '../src/templates/template-utils';
+import { componentsInfo, countVars, draftIssues, imageIssues, imageSize, renderText } from '../src/templates/template-utils';
 
 test('normaliza telefones brasileiros', () => {
   assert.equal(normalizeBrPhone('(11) 98765-4321'), '+5511987654321');
@@ -93,4 +93,19 @@ test('regras da Meta para rascunhos de modelo', () => {
     /descadastro/,
   );
   assert.match(probs('Oi {{1}}, veja.', {}), /Muitas variáveis/);
+});
+
+test('tamanho e regras da imagem do cabeçalho', () => {
+  const png = Buffer.alloc(32);
+  png.writeUInt32BE(0x89504e47, 0);
+  png.writeUInt32BE(1200, 16);
+  png.writeUInt32BE(628, 20);
+  assert.deepEqual(imageSize(png), { width: 1200, height: 628 });
+  // JPEG mínimo: SOI, APP0 curto, SOF0 com 400×300
+  const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0x00, 0x00, 0xff, 0xc0, 0x00, 0x11, 0x08, 0x01, 0x2c, 0x01, 0x90, 0x03, 0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(imageSize(jpg), { width: 400, height: 300 });
+  assert.deepEqual(imageIssues({ width: 1200, height: 628 }, 200_000), []);
+  const probs = imageIssues({ width: 400, height: 300 }, 200_000).map((i) => i.problem).join(' | ');
+  assert.match(probs, /pequena/);
+  assert.match(probs, /Proporção/);
 });

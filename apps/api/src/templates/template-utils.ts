@@ -81,3 +81,36 @@ export function draftIssues(d: TemplateDraft): DraftIssue[] {
   }
   return out;
 }
+
+/** Largura e altura de um PNG ou JPEG lendo só o cabeçalho do arquivo. */
+export function imageSize(b: Buffer): { width: number; height: number } | null {
+  if (b.length > 24 && b.readUInt32BE(0) === 0x89504e47) return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) };
+  if (b.length > 4 && b[0] === 0xff && b[1] === 0xd8) {
+    let i = 2;
+    while (i + 9 < b.length) {
+      if (b[i] !== 0xff) {
+        i++;
+        continue;
+      }
+      const marker = b[i + 1];
+      const len = b.readUInt16BE(i + 2);
+      // SOF0..SOF15, exceto DHT (C4), JPG (C8) e DAC (CC)
+      if (marker >= 0xc0 && marker <= 0xcf && ![0xc4, 0xc8, 0xcc].includes(marker)) return { height: b.readUInt16BE(i + 5), width: b.readUInt16BE(i + 7) };
+      i += 2 + len;
+    }
+  }
+  return null;
+}
+
+/** Regras objetivas para a imagem do cabeçalho. */
+export function imageIssues(size: { width: number; height: number } | null, bytes: number): DraftIssue[] {
+  const out: DraftIssue[] = [];
+  if (bytes > 5 * 1024 * 1024) out.push({ severity: 'bloqueia', problem: 'Imagem com mais de 5 MB', fix: 'Exporte a arte em JPG com qualidade menor' });
+  if (!size) return out;
+  if (size.width < 600) out.push({ severity: 'risco', problem: `Imagem pequena (${size.width}×${size.height})`, fix: 'Use pelo menos 1200 px de largura para não ficar borrada no celular' });
+  const ratio = size.width / size.height;
+  if (ratio < 1.91 * 0.75 || ratio > 1.91 * 1.25) {
+    out.push({ severity: 'dica', problem: `Proporção ${ratio.toFixed(2)}:1 (ideal 1,91:1)`, fix: 'O WhatsApp corta as bordas; o ideal é 1200×628 com o texto longe das bordas' });
+  }
+  return out;
+}

@@ -2,7 +2,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { SettingsService } from '../settings/settings.service';
 import { VARIABLE_SOURCES } from '../ixc/ixc.catalog';
-import { countVars, DraftIssue, draftIssues, TemplateDraft } from '../templates/template-utils';
+import { MediaService } from '../media/media.service';
+import { countVars, DraftIssue, draftIssues, imageIssues, imageSize, TemplateDraft } from '../templates/template-utils';
 
 // preço por milhão de tokens (entrada, saída) em US$, para mostrar o custo de cada uso
 const PRICES: Record<string, [number, number]> = {
@@ -56,6 +57,7 @@ const VARIABLES_SCHEMA = {
 const GENERATE_SCHEMA = {
   type: 'object',
   properties: {
+    imageSummary: { type: ['string', 'null'], description: 'o que a imagem do cabeçalho mostra (null se não houver imagem)' },
     suggestions: {
       type: 'array',
       items: {
@@ -71,7 +73,7 @@ const GENERATE_SCHEMA = {
       },
     },
   },
-  required: ['suggestions'],
+  required: ['suggestions', 'imageSummary'],
   additionalProperties: false,
 };
 
@@ -96,8 +98,9 @@ const REVIEW_SCHEMA = {
       },
     },
     improved: { anyOf: [DRAFT_SCHEMA, { type: 'null' }] },
+    imageAdvice: { type: ['string', 'null'], description: 'o que mudar na arte (null se não houver imagem ou se ela estiver boa)' },
   },
-  required: ['verdict', 'summary', 'suggestedCategory', 'categoryReason', 'issues', 'improved'],
+  required: ['verdict', 'summary', 'suggestedCategory', 'categoryReason', 'issues', 'improved', 'imageAdvice'],
   additionalProperties: false,
 };
 
@@ -107,8 +110,9 @@ const FIX_SCHEMA = {
     explanation: { type: 'string', description: 'o que provavelmente causou a rejeição, em português simples' },
     changes: { type: 'array', items: { type: 'string' } },
     improved: DRAFT_SCHEMA,
+    imageAdvice: { type: ['string', 'null'], description: 'o que mudar na arte, se a imagem pode ter causado a rejeição' },
   },
-  required: ['explanation', 'changes', 'improved'],
+  required: ['explanation', 'changes', 'improved', 'imageAdvice'],
   additionalProperties: false,
 };
 
@@ -121,13 +125,30 @@ const RULES = `Regras da Meta para modelos de WhatsApp (siga todas):
 - Categoria UTILITY: só mensagens sobre algo que o cliente já tem ou fez (fatura, vencimento, manutenção, visita técnica, confirmação, mudança no serviço), sem nenhuma oferta, desconto ou incentivo. Se houver qualquer promoção, upgrade, indicação ou convite, é MARKETING (a Meta reclassifica ou rejeita utilidade com tom promocional).
 - MARKETING deve oferecer saída: botão de resposta rápida "Sair" (o sistema descadastra quem toca nele).
 - Exemplos das variáveis realistas e coerentes com o texto (nome, valor "R$ 99,90", data "10/11/2026").
-- Nome do modelo em minúsculas, números e _, descritivo (ex.: lembrete_fatura_d3).`;
+- Nome do modelo em minúsculas, números e _, descritivo (ex.: lembrete_fatura_d3).
+- A Meta também analisa a IMAGEM do cabeçalho: promessas exageradas, preços ou condições escritos na arte que não batem com o texto, arte promocional em modelo de UTILITY, texto ilegível no celular e conteúdo enganoso causam rejeição.`;
+
+const IMAGE_HINT = `A imagem anexada é o cabeçalho do modelo. Leia o que ela mostra (texto escrito, preço, plano, datas, promoção). O texto deve complementar a arte, sem repetir tudo o que já está escrito nela e sem contradizê-la (mesmo preço, mesmo plano, mesmas datas). Se a arte for promocional, a categoria é MARKETING. Não use headerText (o cabeçalho é a imagem).`;
 
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
 
-  constructor(private settings: SettingsService) {}
+  constructor(private settings: SettingsService, private media: MediaService) {}
+
+  /** Prepara a imagem do cabeçalho para a IA "ver" e confere as regras objetivas dela. */
+  private async image(mediaId?: string | null): Promise<{ block: Anthropic.ImageBlockParam | null; issues: DraftIssue[] }> {
+    if (!mediaId) return { block: null, issues: [] };
+    const { media, buffer } = await this.media.read(mediaId);
+    const issues = imageIssues(imageSize(buffer), buffer.length);
+    // a API aceita até 5 MB por imagem depois de codificada; acima disso a IA escreve sem ver a arte
+    if (buffer.length > 3.7 * 1024 * 1024) {
+      issues.push({ severity: 'dica', problem: 'A IA não analisou a imagem (arquivo grande)', fix: 'Use uma imagem com menos de 3,5 MB para a IA conferir a arte' });
+      return { block: null, issues };
+    }
+    const mediaType = media.mimeType === 'image/png' ? 'image/png' : 'image/jpeg';
+    return { block: { type: 'image', source: { type: 'base64', media_type: mediaType, data: buffer.toString('base64') } }, issues };
+  }
 
   async status() {
     const ai = await this.settings.get('ai');
@@ -163,8 +184,9 @@ Escreva sempre em português do Brasil. Use *negrito* do WhatsApp com moderaçã
   }
 
   /** Gera 3 versões de modelo a partir do objetivo descrito pelo usuário. */
-  async generate(input: { objective: string; category?: 'AUTO' | 'MARKETING' | 'UTILITY'; notes?: string }) {
-    const objective = input.objective?.trim();
+  async generate(input: { objective: string; category?: 'AUTO' | 'MARKETING' | 'UTILITY'; notes?: string; mediaId?: string | null }) {
+    const img = await this.image(input.mediaId);
+    const objective = input.objective?.trim() || (img.block ? 'Divulgar o que a imagem anexada mostra.' : '');
     if (!objective || objective.length < 8) throw new BadRequestException('Descreva o objetivo da mensagem com um pouco mais de detalhe');
     if (objective.length > 2000) throw new BadRequestException('Objetivo muito longo (máximo 2000 caracteres)');
     const cat = input.category && input.category !== 'AUTO' ? `A categoria deve ser ${input.category}.` : 'Escolha a categoria correta (MARKETING ou UTILITY) e explique por quê.';
@@ -174,24 +196,27 @@ ${objective}
 </objetivo>
 ${input.notes?.trim() ? `Observações extras: ${input.notes.trim().slice(0, 500)}\n` : ''}
 Crie exatamente 3 versões diferentes de modelo (abordagens distintas, ex.: direta, calorosa, com benefício em destaque). ${cat}
-Para cada uma: draft completo (com exemplos para cada variável, rodapé curto opcional e botões quando fizer sentido), "variables" dizendo o que cada {{n}} significa e de qual dado do sistema vem (ex.: "Cliente > Primeiro nome"), e "categoryReason" em uma frase.`;
-    const { data, usage } = await this.call<{ suggestions: { title: string; categoryReason: string; draft: TemplateDraft; variables: any[] }[] }>(
+Para cada uma: draft completo (com exemplos para cada variável, rodapé curto opcional e botões quando fizer sentido), "variables" dizendo o que cada {{n}} significa e de qual dado do sistema vem (ex.: "Cliente > Primeiro nome"), e "categoryReason" em uma frase.${img.block ? `\n\n${IMAGE_HINT} Em "imageSummary", descreva em uma frase o que a imagem mostra.` : '\n"imageSummary" = null.'}`;
+    const { data, usage } = await this.call<{ imageSummary: string | null; suggestions: { title: string; categoryReason: string; draft: TemplateDraft; variables: any[] }[] }>(
       await this.system(),
       prompt,
       GENERATE_SCHEMA,
       'medium',
+      img.block,
     );
     const suggestions = (data.suggestions ?? []).slice(0, 3).map((s) => {
       const draft = this.normalize(s.draft);
+      if (img.block) draft.headerText = null;
       return { ...s, draft, issues: draftIssues(draft) };
     });
-    return { suggestions, usage };
+    return { suggestions, imageSummary: img.block ? data.imageSummary : null, imageIssues: img.issues, usage };
   }
 
   /** Revisa um rascunho antes de enviar: regras objetivas + análise da IA. */
-  async review(draftIn: TemplateDraft) {
+  async review(draftIn: TemplateDraft & { mediaId?: string | null }) {
     const draft = this.normalize(draftIn);
-    const local = draftIssues(draft);
+    const img = await this.image(draftIn.mediaId);
+    const local = [...draftIssues(draft), ...img.issues];
     const prompt = `Revise este modelo antes de enviá-lo à Meta. Aponte tudo que pode causar rejeição, reclassificação de categoria ou reclamação dos clientes, e diga se a categoria escolhida está certa.
 Se houver qualquer problema, devolva em "improved" uma versão corrigida mantendo a intenção e o estilo (mesmas variáveis sempre que possível); se estiver bom, "improved" = null.
 "verdict": ok (pode enviar), atencao (riscos menores) ou alto_risco (provável rejeição).
@@ -200,7 +225,11 @@ Modelo (JSON):
 ${JSON.stringify(draft, null, 2)}
 
 Problemas já detectados pelas regras automáticas (não repita, mas corrija na versão melhorada):
-${local.length ? local.map((i) => `- ${i.problem}`).join('\n') : '- nenhum'}`;
+${local.length ? local.map((i) => `- ${i.problem}`).join('\n') : '- nenhum'}${
+      img.block
+        ? `\n\nA imagem anexada é o cabeçalho deste modelo: revise também a arte (promessas, preços e datas coerentes com o texto, tom promocional x categoria, legibilidade no celular). Problemas da arte vão em "issues" e a recomendação em "imageAdvice" (a IA não edita a imagem; diga o que mudar). Se a arte estiver boa, "imageAdvice" = null.`
+        : '\n"imageAdvice" = null.'
+    }`;
     const { data, usage } = await this.call<{
       verdict: 'ok' | 'atencao' | 'alto_risco';
       summary: string;
@@ -208,17 +237,20 @@ ${local.length ? local.map((i) => `- ${i.problem}`).join('\n') : '- nenhum'}`;
       categoryReason: string;
       issues: DraftIssue[];
       improved: TemplateDraft | null;
-    }>(await this.system(), prompt, REVIEW_SCHEMA, 'medium');
+      imageAdvice: string | null;
+    }>(await this.system(), prompt, REVIEW_SCHEMA, 'medium', img.block);
     const issues = [...local, ...(data.issues ?? [])];
     // uma regra objetiva que bloqueia vale mais que a opinião da IA
     const verdict = local.some((i) => i.severity === 'bloqueia') ? 'alto_risco' : data.verdict;
     const improved = data.improved ? this.normalize(data.improved) : null;
-    return { ...data, verdict, issues, improved, improvedIssues: improved ? draftIssues(improved) : [], usage };
+    if (improved && img.block) improved.headerText = null;
+    return { ...data, imageAdvice: img.block ? data.imageAdvice : null, verdict, issues, improved, improvedIssues: improved ? draftIssues(improved) : [], usage };
   }
 
   /** Explica uma rejeição da Meta e propõe uma versão corrigida. */
-  async fixRejected(draftIn: TemplateDraft, reason: string | null) {
+  async fixRejected(draftIn: TemplateDraft, reason: string | null, mediaId?: string | null) {
     const draft = this.normalize(draftIn);
+    const img = await this.image(mediaId);
     const prompt = `Este modelo foi REJEITADO pela Meta.
 Motivo informado pela Meta: ${reason?.trim() || 'não informado'}
 (Motivos comuns: INVALID_FORMAT = formato/variáveis; TAG_CONTENT_MISMATCH = conteúdo não bate com a categoria; PROMOTIONAL / ABUSIVE_CONTENT = tom promocional ou agressivo; SCAM = parece golpe; INCORRECT_CATEGORY = categoria errada.)
@@ -226,15 +258,21 @@ Motivo informado pela Meta: ${reason?.trim() || 'não informado'}
 Modelo rejeitado (JSON):
 ${JSON.stringify(draft, null, 2)}
 
-Explique em português simples, para alguém que não é técnico, o que provavelmente causou a rejeição. Liste as mudanças feitas e devolva em "improved" uma versão corrigida com alta chance de aprovação, mantendo o objetivo. Use um nome novo (ex.: acrescente _v2).`;
-    const { data, usage } = await this.call<{ explanation: string; changes: string[]; improved: TemplateDraft }>(
+Explique em português simples, para alguém que não é técnico, o que provavelmente causou a rejeição. Liste as mudanças feitas e devolva em "improved" uma versão corrigida com alta chance de aprovação, mantendo o objetivo. Use um nome novo (ex.: acrescente _v2).${
+      img.block
+        ? `\n\nA imagem anexada é o cabeçalho do modelo rejeitado. Considere que a arte pode ter causado a rejeição; se for o caso, explique e diga em "imageAdvice" o que mudar nela (a IA não edita a imagem). ${IMAGE_HINT}`
+        : '\n"imageAdvice" = null.'
+    }`;
+    const { data, usage } = await this.call<{ explanation: string; changes: string[]; improved: TemplateDraft; imageAdvice: string | null }>(
       await this.system(),
       prompt,
       FIX_SCHEMA,
       'medium',
+      img.block,
     );
     const improved = this.normalize(data.improved);
-    return { ...data, improved, issues: draftIssues(improved), usage };
+    if (img.block) improved.headerText = null;
+    return { ...data, imageAdvice: img.block ? data.imageAdvice : null, improved, issues: [...draftIssues(improved), ...img.issues], usage };
   }
 
   /** Ajusta o que a IA devolveu ao formato que o formulário e a Meta aceitam. */
@@ -265,7 +303,13 @@ Explique em português simples, para alguém que não é técnico, o que provave
     };
   }
 
-  private async call<T>(system: string, prompt: string, schema: Record<string, unknown>, effort: 'low' | 'medium'): Promise<{ data: T; usage: AiUsage }> {
+  private async call<T>(
+    system: string,
+    prompt: string,
+    schema: Record<string, unknown>,
+    effort: 'low' | 'medium',
+    image?: Anthropic.ImageBlockParam | null,
+  ): Promise<{ data: T; usage: AiUsage }> {
     const ai = await this.settings.get('ai');
     if (!ai.apiKey) throw new ServiceUnavailableException('IA não configurada: informe a chave da API em Configurações → Inteligência artificial');
     const model = ai.model || 'claude-haiku-5-5';
@@ -278,7 +322,7 @@ Explique em português simples, para alguém que não é técnico, o que provave
         thinking: { type: 'adaptive' },
         output_config: { effort, format: { type: 'json_schema', schema } },
         system,
-        messages: [{ role: 'user', content: prompt }],
+        messages: [{ role: 'user', content: image ? [image, { type: 'text', text: prompt }] : prompt }],
       });
     } catch (e) {
       throw new ServiceUnavailableException(this.errorMessage(e));
